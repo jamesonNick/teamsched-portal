@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -103,7 +103,7 @@ async function initAdminMatrix() {
     const bgClass = d.isWeekend ? 'bg-slate-700 text-slate-400' : 'bg-amber-400 text-slate-900 font-bold';
     headHTML += `<th class="p-1 text-center border-r min-w-[65px] ${bgClass}"><div class="text-[9px] uppercase">${d.dayName}</div><div>${d.dayNum}</div></th>`;
   });
-  head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20">ACTION</th></tr>`;
+  head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
   let { data: employees } = await db.from('employees').select('*');
   const { data: schedules } = await db.from('schedules').select('*');
@@ -149,7 +149,12 @@ async function initAdminMatrix() {
       }
     });
 
-    return rowHTML + `<td class="p-1 text-center bg-white sticky right-0 shadow-sm"><button onclick="deleteEmployee(${emp.id})" class="text-rose-600 font-bold hover:bg-rose-50 p-1.5 rounded-lg transition" title="Delete Employee">🗑️</button></td></tr>`;
+    return rowHTML + `
+      <td class="p-1 text-center bg-white sticky right-0 shadow-sm flex items-center justify-center gap-1">
+        <button onclick="openEditEmpModal(${emp.id}, '${emp.name.replace(/'/g, "\\'")}', '${emp.team}')" class="text-indigo-600 font-bold hover:bg-indigo-50 p-1.5 rounded-lg transition text-xs" title="Edit Employee">✏️</button>
+        <button onclick="deleteEmployee(${emp.id})" class="text-rose-600 font-bold hover:bg-rose-50 p-1.5 rounded-lg transition text-xs" title="Delete Employee">🗑️</button>
+      </td>
+    </tr>`;
   }).join('');
 }
 
@@ -175,11 +180,39 @@ async function handleDropdownChange(selectElem, empId, date) {
     alert('Error saving: ' + error.message);
     initAdminMatrix();
   } else {
-    // Refresh global matrix memory and KPI cards immediately
     const monthVal = document.getElementById('adminMonthPicker').value;
     const { data: schedules } = await db.from('schedules').select('*');
     globalSchedules = schedules || [];
     updateAdminKpis(monthVal);
+  }
+}
+
+// Edit Employee Modal Logic
+function openEditEmpModal(id, name, team) {
+  document.getElementById('editEmpId').value = id;
+  document.getElementById('editEmpName').value = name;
+  document.getElementById('editEmpTeam').value = team;
+  document.getElementById('editEmpModal').classList.remove('hidden');
+}
+
+function closeEditEmpModal() {
+  document.getElementById('editEmpModal').classList.add('hidden');
+}
+
+async function submitEditEmployee() {
+  const id = document.getElementById('editEmpId').value;
+  const name = document.getElementById('editEmpName').value;
+  const team = document.getElementById('editEmpTeam').value;
+
+  if (!name) return alert('Please enter employee name.');
+
+  const { error } = await db.from('employees').update({ name, team }).eq('id', id);
+
+  if (error) {
+    alert('Failed to update employee: ' + error.message);
+  } else {
+    closeEditEmpModal();
+    initAdminMatrix();
   }
 }
 
