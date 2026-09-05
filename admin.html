@@ -203,6 +203,35 @@
     </div>
   </div>
 
+  <!-- Edit Employee Modal -->
+<div id="editEmpModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
+  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+    <div class="flex justify-between items-center border-b pb-3">
+      <h3 class="font-bold text-slate-800 text-base">✏️ Edit Employee Details</h3>
+      <button onclick="closeEditEmpModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+    </div>
+    <input type="hidden" id="editEmpId">
+    <div class="space-y-3 text-xs">
+      <div>
+        <label class="font-bold text-slate-600">Employee Name</label>
+        <input type="text" id="editEmpName" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <div>
+        <label class="font-bold text-slate-600">Team / Department</label>
+        <select id="editEmpTeam" class="w-full border p-2 rounded-lg mt-1 font-bold outline-none">
+          <option value="EAST ASIA">EAST ASIA</option>
+          <option value="JP + BB + IFF + OC">JP + BB + IFF + OC</option>
+          <option value="WEST ASIA">WEST ASIA</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="closeEditEmpModal()" class="w-1/2 bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs">Cancel</button>
+      <button onclick="submitEditEmployee()" class="w-1/2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition">Save Changes</button>
+    </div>
+  </div>
+</div>
+
   <script src="admin.js"></script>
 </body>
 </html>
