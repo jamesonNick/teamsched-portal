@@ -119,7 +119,7 @@ async function handleLogout() {
   window.location.href = 'login.html';
 }
 
-// ============ ADMIN MATRIX (FIXED) ============
+// ============ ADMIN MATRIX ============
 
 async function initAdminMatrix() {
   const isAuth = await checkAdminAuth();
@@ -180,7 +180,7 @@ async function initAdminMatrix() {
     return;
   }
 
-  // Build table body using filtered employees
+  // Build table body using filtered employees (for display only)
   body.innerHTML = filteredEmployees.map(emp => {
     let rowHTML = `<tr><td class="p-2 border-r font-bold text-slate-800 sticky left-0 bg-white shadow-sm">${emp.name}</td><td class="p-2 border-r text-slate-500">${emp.team}</td>`;
 
@@ -188,19 +188,11 @@ async function initAdminMatrix() {
       if (d.isWeekend) {
         rowHTML += `<td class="p-1 border-r text-center bg-slate-100"></td>`;
       } else {
-        // ============ FIX: Properly fetch status ============
         const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === d.dateStr);
         const status = sched ? sched.status : 'WFH';
-        
-        // Log para makita kung ano ang status
-        // console.log(`Employee ${emp.id}, Date ${d.dateStr}, Status: ${status}`);
-        
         rowHTML += `
           <td class="p-1 border-r text-center">
-            <select onchange="handleDropdownChange(this, ${emp.id}, '${d.dateStr}')" 
-                    class="text-[9px] font-bold p-1 rounded border ${getBadgeClass(status, false)} outline-none"
-                    data-employee="${emp.id}" 
-                    data-date="${d.dateStr}">
+            <select onchange="handleDropdownChange(this, ${emp.id}, '${d.dateStr}')" class="text-[9px] font-bold p-1 rounded border ${getBadgeClass(status, false)} outline-none">
               <option value="WFH" ${status === 'WFH' ? 'selected' : ''}>WFH</option>
               <option value="WFO" ${status === 'WFO' ? 'selected' : ''}>WFO</option>
               <option value="VL" ${status === 'VL' ? 'selected' : ''}>VL</option>
@@ -222,8 +214,6 @@ async function initAdminMatrix() {
       </td>
     </tr>`;
   }).join('');
-  
-  console.log('✅ Admin matrix rendered successfully');
 }
 
 // ============ KPI UPDATES ============
@@ -252,79 +242,41 @@ function updateTodayStatus() {
   }
 }
 
-// ============ DROPDOWN CHANGE (FIXED) ============
+// ============ DROPDOWN CHANGE ============
 
 async function handleDropdownChange(selectElem, empId, date) {
   const newStatus = selectElem.value.trim();
   
   console.log(`🔄 Updating: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
   
-  // Show loading state
-  selectElem.style.opacity = '0.5';
-  selectElem.disabled = true;
-  
-  // Save the current selection
-  const currentValue = selectElem.value;
-  
+  if (!confirm(`Confirm schedule update to "${newStatus}" for date ${date}?`)) {
+    await initAdminMatrix();
+    return;
+  }
+
+  selectElem.className = `text-[9px] font-bold p-1 rounded border ${getBadgeClass(newStatus, false)} outline-none`;
+
   try {
-    // ============ FIX: Direct update with upsert ============
-    const { data, error } = await db.from('schedules').upsert(
-      { 
-        employee_id: empId, 
-        date: date, 
-        status: newStatus 
-      }, 
-      { 
-        onConflict: 'employee_id,date',
-        ignoreDuplicates: false 
-      }
+    const { error } = await db.from('schedules').upsert(
+      { employee_id: empId, date: date, status: newStatus }, 
+      { onConflict: 'employee_id,date' }
     );
     
     if (error) {
-      console.error('❌ Error saving:', error);
       alert('Error saving: ' + error.message);
-      // Revert to previous value
-      selectElem.value = currentValue;
+      await initAdminMatrix();
     } else {
       console.log(`✅ Updated: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
       
-      // ============ FIX: Refresh data from database ============
       const { data: schedules } = await db.from('schedules').select('*');
       globalSchedules = schedules || [];
-      
-      // Update KPIs
       const monthVal = document.getElementById('adminMonthPicker').value;
       updateAdminKpis(monthVal);
       updateTodayStatus();
-      
-      // ============ FIX: Update the badge class ============
-      selectElem.className = `text-[9px] font-bold p-1 rounded border ${getBadgeClass(newStatus, false)} outline-none`;
-      
-      // Show success toast
-      showToast(`✅ Updated to "${newStatus}" for ${date}`, 'success');
-      
-      // ============ FIX: Verify the update ============
-      const { data: verify } = await db.from('schedules')
-        .select('status')
-        .eq('employee_id', empId)
-        .eq('date', date)
-        .single();
-      
-      if (verify) {
-        console.log(`🔍 Verified: Status is "${verify.status}"`);
-        if (verify.status !== newStatus) {
-          console.warn(`⚠️ Mismatch! Expected "${newStatus}" but got "${verify.status}"`);
-        }
-      }
     }
   } catch (err) {
-    console.error('❌ Error:', err);
     alert('Error: ' + err.message);
-    selectElem.value = currentValue;
-  } finally {
-    // Re-enable
-    selectElem.style.opacity = '1';
-    selectElem.disabled = false;
+    await initAdminMatrix();
   }
 }
 
@@ -447,7 +399,7 @@ async function submitEditEmployee() {
   }
 }
 
-// ============ BULK EDIT (FIXED) ============
+// ============ BULK EDIT (FULLY FIXED) ============
 
 function toggleBulkInputMode() {
   const mode = document.getElementById('bulkMode').value;
@@ -502,11 +454,10 @@ async function applyBulkStatus() {
     return;
   }
 
-  // Fetch ALL employees
+  // ============ FIX: Get ALL employees DIRECTLY from database ============
   const { data: allEmployees, error: empError } = await db
     .from('employees')
-    .select('*')
-    .order('name', { ascending: true });
+    .select('*');
   
   if (empError) {
     alert('Error fetching employees: ' + empError.message);
@@ -518,6 +469,8 @@ async function applyBulkStatus() {
     return;
   }
 
+  console.log(`📊 Found ${allEmployees.length} employees to update`);
+
   const employeesToUpdate = allEmployees;
   const totalRecords = employeesToUpdate.length * targetDates.length;
   
@@ -525,11 +478,24 @@ async function applyBulkStatus() {
                   mode === 'MONTH' ? 'weekdays only' : 
                   '1 day';
   
-  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s) (${dayType})\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
+  // Show detailed confirmation
+  let confirmMessage = `⚠️ Apply "${statusVal}" to:\n\n`;
+  confirmMessage += `📊 ${employeesToUpdate.length} employee(s)\n`;
+  confirmMessage += `📅 ${targetDates.length} date(s) (${dayType})\n`;
+  confirmMessage += `📝 ${totalRecords} total record(s)\n\n`;
+  confirmMessage += `Employees:\n`;
+  employeesToUpdate.slice(0, 10).forEach(e => {
+    confirmMessage += `   - ${e.name} (${e.team})\n`;
+  });
+  if (employeesToUpdate.length > 10) {
+    confirmMessage += `   ... and ${employeesToUpdate.length - 10} more\n`;
+  }
+  
+  if (!confirm(confirmMessage)) {
     return;
   }
 
-  // Prepare all records
+  // ============ FIX: Process ALL records ============
   let records = [];
   employeesToUpdate.forEach(emp => {
     targetDates.forEach(date => {
@@ -541,10 +507,14 @@ async function applyBulkStatus() {
     });
   });
 
-  // Process in chunks
-  const chunkSize = 100;
+  console.log(`📝 Preparing ${records.length} records...`);
+
+  // Process in chunks para iwas timeout
+  const chunkSize = 50;
   let errors = [];
   let updated = 0;
+
+  showToast(`⏳ Updating ${totalRecords} records...`, 'info');
 
   for (let i = 0; i < records.length; i += chunkSize) {
     const chunk = records.slice(i, i + chunkSize);
@@ -556,23 +526,26 @@ async function applyBulkStatus() {
       
       if (error) {
         errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${error.message}`);
+        console.error(`❌ Chunk ${Math.floor(i/chunkSize) + 1} error:`, error);
       } else {
         updated += chunk.length;
+        console.log(`✅ Chunk ${Math.floor(i/chunkSize) + 1} completed (${chunk.length} records)`);
       }
       
     } catch (err) {
       errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${err.message}`);
+      console.error(`❌ Chunk ${Math.floor(i/chunkSize) + 1} error:`, err);
     }
   }
 
-  // Show results
+  // ============ SHOW RESULTS ============
   if (errors.length > 0) {
     alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}`);
   } else {
     alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
-  // ============ FIX: Force refresh everything ============
+  // ============ FORCE REFRESH ============
   globalEmployees = allEmployees;
   
   // Fetch latest schedules
@@ -583,26 +556,41 @@ async function applyBulkStatus() {
   await initAdminMatrix();
   updateTodayStatus();
   
-  showToast(`✅ Applied "${statusVal}" to ${targetDates.length} days`, 'success');
+  showToast(`✅ Applied "${statusVal}" to ${updated} records`, 'success');
 
-  // ============ VERIFY ============
-  console.log('🔍 Verifying updates...');
+  // ============ VERIFY ALL ============
+  console.log('🔍 VERIFYING ALL UPDATES...');
+  let allCorrect = true;
+  
   for (const date of targetDates) {
     const { data: check } = await db.from('schedules')
       .select('employee_id, status')
       .eq('date', date);
+    
     if (check && check.length > 0) {
       const correctCount = check.filter(s => s.status === statusVal).length;
-      console.log(`📅 ${date}: ${correctCount}/${check.length} records are "${statusVal}"`);
-      if (correctCount < check.length) {
-        console.warn(`⚠️ ${date}: ${check.length - correctCount} records have different status`);
+      const total = check.length;
+      console.log(`📅 ${date}: ${correctCount}/${total} records are "${statusVal}"`);
+      
+      if (correctCount < total) {
+        allCorrect = false;
         const mismatches = check.filter(s => s.status !== statusVal);
-        mismatches.forEach(m => {
+        console.warn(`⚠️ ${date}: ${mismatches.length} mismatches`);
+        mismatches.slice(0, 5).forEach(m => {
           const emp = allEmployees.find(e => e.id === m.employee_id);
           console.log(`   - ${emp?.name || 'Unknown'}: ${m.status}`);
         });
+        if (mismatches.length > 5) {
+          console.log(`   ... and ${mismatches.length - 5} more`);
+        }
       }
     }
+  }
+  
+  if (allCorrect) {
+    console.log('🎉 ALL RECORDS VERIFIED CORRECT!');
+  } else {
+    console.warn('⚠️ Some records may not have been updated correctly.');
   }
 }
 
@@ -787,41 +775,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupAdminKpiClickHandlers();
   }
 });
-
-// ============ DEBUG FUNCTION ============
-// I-run ito sa console (F12) para i-verify ang status ng isang date
-
-async function checkDateStatus(date, expectedStatus) {
-  console.log(`🔍 Checking ${date}...`);
-  
-  const { data: employees } = await db.from('employees').select('id, name');
-  const { data: schedules } = await db.from('schedules')
-    .select('employee_id, status')
-    .eq('date', date);
-  
-  if (!schedules || schedules.length === 0) {
-    console.log(`❌ No records found for ${date}`);
-    return;
-  }
-  
-  const total = schedules.length;
-  const correct = schedules.filter(s => s.status === expectedStatus).length;
-  const mismatches = schedules.filter(s => s.status !== expectedStatus);
-  
-  console.log(`📊 ${date}:`);
-  console.log(`   Total: ${total}`);
-  console.log(`   ✅ Correct (${expectedStatus}): ${correct}`);
-  console.log(`   ❌ Mismatches: ${mismatches.length}`);
-  
-  if (mismatches.length > 0) {
-    console.log('   Mismatched records:');
-    mismatches.forEach(m => {
-      const emp = employees.find(e => e.id === m.employee_id);
-      console.log(`     - ${emp?.name || 'Unknown'}: ${m.status}`);
-    });
-  }
-  
-  return { total, correct, mismatches: mismatches.length };
-}
-
-// Example: checkDateStatus('2026-09-09', 'WFO');
