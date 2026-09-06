@@ -261,3 +261,32 @@ window.addEventListener('DOMContentLoaded', () => {
   if (picker) picker.value = getCurrentYearMonth();
   checkSession();
 });
+
+function updateAdminKpis(selectedMonth) {
+  const todayStr = getTodayDateStr();
+
+  // Gumamit ng tamang IDs batay sa HTML
+  const totalElem = document.getElementById('adminKpiTotal') || document.getElementById('kpiTotal');
+  const leavesElem = document.getElementById('adminKpiLeaves') || document.getElementById('kpiLeave');
+  const holidaysElem = document.getElementById('adminKpiHolidays') || document.getElementById('kpiHoliday');
+  const wfoElem = document.getElementById('adminKpiWfo') || document.getElementById('kpiWfo');
+  const wfhElem = document.getElementById('adminKpiWfh') || document.getElementById('kpiWfh');
+
+  if (totalElem) totalElem.innerText = globalEmployees.length;
+
+  const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
+  const todayScheds = globalSchedules.filter(s => s.date === todayStr);
+
+  const wfoToday = todayScheds.filter(s => s.status === 'WFO').length;
+
+  if (wfoElem) wfoElem.innerText = wfoToday;
+  if (wfhElem) wfhElem.innerText = Math.max(0, globalEmployees.length - wfoToday);
+
+  const totalLeaves = monthScheds.filter(s => {
+    const st = s.status || '';
+    return st.startsWith('VL') || st.startsWith('SL');
+  }).length;
+
+  if (leavesElem) leavesElem.innerText = totalLeaves;
+  if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
+}
