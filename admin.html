@@ -27,6 +27,7 @@
           <span id="requestBadge" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-extrabold">0</span>
         </button>
         <button onclick="addNewEmployee()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">+ Add Employee</button>
+        <!-- Opens User View in a NEW TAB -->
         <a href="index.html" target="_blank" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">👁️ View User Matrix ↗</a>
         <button onclick="handleLogout()" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Logout</button>
       </div>
@@ -52,7 +53,7 @@
       </div>
     </div>
 
-    <!-- Bulk Update Bar -->
+    <!-- Bulk Update Bar with Full Status Options -->
     <div class="bg-gradient-to-r from-slate-800 to-slate-900 p-3.5 rounded-xl shadow text-white flex flex-wrap gap-3 items-center justify-between text-xs">
       <div class="flex items-center gap-2 flex-wrap">
         <span class="font-extrabold text-amber-400">⚡ BULK EDIT:</span>
@@ -150,7 +151,7 @@
     </div>
   </div>
 
-  <!-- Requests Inbox Modal -->
+  <!-- Requests Inbox Modal for Admin -->
   <div id="requestsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
     <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
