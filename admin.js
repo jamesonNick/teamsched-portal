@@ -242,10 +242,12 @@ function updateTodayStatus() {
   }
 }
 
-// ============ DROPDOWN CHANGE ============
+// ============ DROPDOWN CHANGE (FIXED) ============
 
 async function handleDropdownChange(selectElem, empId, date) {
-  const newStatus = selectElem.value;
+  const newStatus = selectElem.value.trim();
+  
+  console.log(`🔄 Updating: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
   
   if (!confirm(`Confirm schedule update to "${newStatus}" for date ${date}?`)) {
     await initAdminMatrix();
@@ -264,6 +266,8 @@ async function handleDropdownChange(selectElem, empId, date) {
       alert('Error saving: ' + error.message);
       await initAdminMatrix();
     } else {
+      console.log(`✅ Updated: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
+      
       const { data: schedules } = await db.from('schedules').select('*');
       globalSchedules = schedules || [];
       const monthVal = document.getElementById('adminMonthPicker').value;
@@ -395,18 +399,16 @@ async function submitEditEmployee() {
   }
 }
 
-// ============ BULK EDIT ============
+// ============ BULK EDIT (FIXED) ============
 
 function toggleBulkInputMode() {
   const mode = document.getElementById('bulkMode').value;
   const dayContainer = document.getElementById('bulkDayContainer');
   const weekContainer = document.getElementById('bulkWeekContainer');
   
-  // Hide all first
   if (dayContainer) dayContainer.classList.add('hidden');
   if (weekContainer) weekContainer.classList.add('hidden');
   
-  // Show selected
   if (mode === 'DAY' && dayContainer) {
     dayContainer.classList.remove('hidden');
   } else if (mode === 'WEEK' && weekContainer) {
@@ -416,8 +418,13 @@ function toggleBulkInputMode() {
 
 async function applyBulkStatus() {
   const mode = document.getElementById('bulkMode').value;
-  const statusVal = document.getElementById('bulkStatusInput').value;
+  let statusVal = document.getElementById('bulkStatusInput').value;
   const monthVal = document.getElementById('adminMonthPicker').value;
+
+  // Trim status para sure
+  statusVal = statusVal.trim();
+  
+  console.log('🔄 Applying status:', statusVal);
 
   let targetDates = [];
 
@@ -428,28 +435,26 @@ async function applyBulkStatus() {
   } else if (mode === 'WEEK') {
     const weekStart = document.getElementById('bulkWeekInput').value;
     if (!weekStart) return alert('Select Monday start date.');
-    // WEEKDAYS ONLY: Mon-Fri (5 days) - EXCLUDING Saturday and Sunday
+    // Weekdays only: Mon-Fri
     for (let i = 0; i < 5; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split('T')[0];
       targetDates.push(dateStr);
     }
-    if (targetDates.length === 0) {
-      alert('No weekdays found in the selected week.');
-      return;
-    }
+    console.log('📅 Week dates:', targetDates);
   } else if (mode === 'MONTH') {
-    // WEEKDAYS ONLY: Exclude weekends (Saturday and Sunday)
     const allDates = getMonthDates(monthVal);
     targetDates = allDates.filter(d => !d.isWeekend).map(d => d.dateStr);
-    if (targetDates.length === 0) {
-      alert('No weekdays found in this month.');
-      return;
-    }
+    console.log('📅 Month dates:', targetDates);
   }
 
-  // Directly fetch ALL employees from database (no filters!)
+  if (targetDates.length === 0) {
+    alert('No dates found to update.');
+    return;
+  }
+
+  // Fetch ALL employees
   const { data: allEmployees, error: empError } = await db
     .from('employees')
     .select('*')
@@ -461,13 +466,11 @@ async function applyBulkStatus() {
   }
 
   if (!allEmployees || allEmployees.length === 0) {
-    alert('No employees found in the database.');
+    alert('No employees found.');
     return;
   }
 
-  // Use ALL employees, not just the filtered ones
   const employeesToUpdate = allEmployees;
-  
   const totalRecords = employeesToUpdate.length * targetDates.length;
   
   const dayType = mode === 'WEEK' ? '5 days (Mon-Fri)' : 
@@ -516,23 +519,32 @@ async function applyBulkStatus() {
 
   // Show results
   if (errors.length > 0) {
-    alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n\n...and ${errors.length - 3} more errors` : ''}`);
+    alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}`);
   } else {
     alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
-  // Update globalEmployees with ALL employees
+  // Refresh everything
   globalEmployees = allEmployees;
-  
-  // Refresh the table
   await initAdminMatrix();
   
-  // Also update today's status
   const { data: schedules } = await db.from('schedules').select('*');
   globalSchedules = schedules || [];
   updateTodayStatus();
   
-  showToast('✅ Bulk update completed successfully!', 'success');
+  showToast(`✅ Applied "${statusVal}" to ${targetDates.length} days`, 'success');
+
+  // ============ VERIFY ============
+  console.log('🔍 Verifying updates...');
+  for (const date of targetDates) {
+    const { data: check } = await db.from('schedules')
+      .select('employee_id, status')
+      .eq('date', date);
+    if (check && check.length > 0) {
+      const correctCount = check.filter(s => s.status === statusVal).length;
+      console.log(`📅 ${date}: ${correctCount}/${check.length} records are "${statusVal}"`);
+    }
+  }
 }
 
 // ============ REFRESH DATA ============
