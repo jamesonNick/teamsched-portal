@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -10,25 +10,20 @@ function getCurrentYearMonth() {
   return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 }
 
-function getTodayDateStr() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function getMonthDates(yearMonth) {
-  const [year, month] = yearMonth.split('-').map(Number);
+  const [yearStr, monthStr] = yearMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
   const totalDays = new Date(year, month, 0).getDate();
 
   return Array.from({length: totalDays}, (_, i) => {
     const dayNum = (i + 1).toString().padStart(2, '0');
-    const dateStr = `${yearMonth}-${dayNum}`;
-    const dateObj = new Date(dateStr);
-    const dayOfWeek = dateObj.getDay();
+    const monthFormatted = month.toString().padStart(2, '0');
+    const dateStr = `${year}-${monthFormatted}-${dayNum}`;
+    const dateObj = new Date(Date.UTC(year, month - 1, i + 1));
+    const dayOfWeek = dateObj.getUTCDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
     return { dateStr, dayNum, dayName, isWeekend };
   });
 }
@@ -60,12 +55,13 @@ async function initUserMatrix() {
   });
   head.innerHTML = headHTML + `</tr>`;
 
-  let { data: employees } = await db.from('employees').select('*');
-  const { data: schedules } = await db.from('schedules')
-    .select('*')
-    .like('date', `${monthVal}%`);
+  let { data: employees, error: empErr } = await db.from('employees').select('*');
+  const { data: schedules } = await db.from('schedules').select('*').like('date', `${monthVal}%`);
 
-  if (!employees) return;
+  if (empErr || !employees) {
+    console.error('Fetch error:', empErr);
+    return;
+  }
 
   globalEmployees = employees;
   globalSchedules = schedules || [];
@@ -87,7 +83,7 @@ async function initUserMatrix() {
       if (d.isWeekend) {
         rowHTML += `<td class="p-1 border-r text-center bg-slate-100"></td>`;
       } else {
-        const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === d.dateStr);
+        const sched = globalSchedules.find(s => String(s.employee_id) === String(emp.id) && s.date === d.dateStr);
         const status = sched ? sched.status : 'WFH';
         rowHTML += `
           <td class="p-1 border-r text-center">
@@ -111,24 +107,6 @@ function updateUserKpis(selectedMonth) {
   if (totalElem) totalElem.innerText = globalEmployees.length;
   if (leavesElem) leavesElem.innerText = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
   if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
-}
-
-async function submitRequest() {
-  const name = document.getElementById('reqName').value.trim();
-  const date = document.getElementById('reqDate').value;
-  const type = document.getElementById('reqType').value;
-  const message = document.getElementById('reqMessage').value;
-
-  if (!name || !date) return alert('Please complete required fields.');
-
-  const { error } = await db.from('requests').insert([{ employee_name: name, date, request_type: type, message }]);
-
-  if (error) {
-    alert('Submission failed: ' + error.message);
-  } else {
-    alert('Request submitted successfully!');
-    document.getElementById('reqModal').classList.add('hidden');
-  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
