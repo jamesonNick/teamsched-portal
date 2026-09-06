@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -108,8 +108,6 @@ async function initAdminMatrix() {
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
   let { data: employees } = await db.from('employees').select('*');
-  
-  // IN-UPDATE: Gamitin ang .like para makuha ang LAHAT ng schedules ngayong buwan
   const { data: schedules } = await db.from('schedules')
     .select('*')
     .like('date', `${monthVal}%`);
@@ -191,8 +189,6 @@ async function handleDropdownChange(selectElem, empId, date) {
     initAdminMatrix();
   } else {
     const monthVal = document.getElementById('adminMonthPicker').value;
-    
-    // IN-UPDATE: Gamitin ang .like dito rin para ma-sync agad ang view
     const { data: schedules } = await db.from('schedules')
       .select('*')
       .like('date', `${monthVal}%`);
