@@ -19,23 +19,16 @@ function getTodayDateStr() {
 }
 
 function getMonthDates(yearMonth) {
-  const [yearStr, monthStr] = yearMonth.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
-  
+  const [year, month] = yearMonth.split('-').map(Number);
   const totalDays = new Date(year, month, 0).getDate();
 
   return Array.from({length: totalDays}, (_, i) => {
     const dayNum = (i + 1).toString().padStart(2, '0');
-    const monthFormatted = month.toString().padStart(2, '0');
-    const dateStr = `${year}-${monthFormatted}-${dayNum}`; // Strict YYYY-MM-DD
-    
-    // Create Date Object safely via UTC parameters to avoid local timezone offset shifts
-    const dateObj = new Date(Date.UTC(year, month - 1, i + 1));
-    const dayOfWeek = dateObj.getUTCDay();
+    const dateStr = `${yearMonth}-${dayNum}`;
+    const dateObj = new Date(dateStr);
+    const dayOfWeek = dateObj.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
-    
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
     return { dateStr, dayNum, dayName, isWeekend };
   });
 }
@@ -115,11 +108,7 @@ async function initAdminMatrix() {
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
   let { data: employees } = await db.from('employees').select('*');
-  
-  // Exact wildcard matching for current active month
-  const { data: schedules } = await db.from('schedules')
-    .select('*')
-    .like('date', `${monthVal}%`);
+  const { data: schedules } = await db.from('schedules').select('*');
 
   if (!employees) return;
 
@@ -143,7 +132,7 @@ async function initAdminMatrix() {
       if (d.isWeekend) {
         rowHTML += `<td class="p-1 border-r text-center bg-slate-100"></td>`;
       } else {
-        const sched = globalSchedules.find(s => String(s.employee_id) === String(emp.id) && s.date === d.dateStr);
+        const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === d.dateStr);
         const status = sched ? sched.status : 'WFH';
         rowHTML += `
           <td class="p-1 border-r text-center">
@@ -198,10 +187,7 @@ async function handleDropdownChange(selectElem, empId, date) {
     initAdminMatrix();
   } else {
     const monthVal = document.getElementById('adminMonthPicker').value;
-    const { data: schedules } = await db.from('schedules')
-      .select('*')
-      .like('date', `${monthVal}%`);
-      
+    const { data: schedules } = await db.from('schedules').select('*');
     globalSchedules = schedules || [];
     updateAdminKpis(monthVal);
   }
@@ -262,9 +248,7 @@ async function applyBulkStatus() {
       targetDates.push(d.toISOString().split('T')[0]);
     }
   } else if (mode === 'MONTH') {
-    targetDates = getMonthDates(monthVal)
-      .filter(d => !d.isWeekend)
-      .map(d => d.dateStr);
+    targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
   }
 
   const { data: latestEmployees } = await db.from('employees').select('*');
@@ -277,32 +261,16 @@ async function applyBulkStatus() {
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
-      records.push({ employee_id: emp.id, date: date, status: statusVal });
+      records.push({ employee_id: emp.id, date, status: statusVal });
     });
   });
 
-  const BATCH_SIZE = 300;
-  let hasError = false;
+  const { error } = await db.from('schedules').upsert(records, { onConflict: 'employee_id,date' });
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const chunk = records.slice(i, i + BATCH_SIZE);
-    const { error } = await db.from('schedules').upsert(chunk, { onConflict: 'employee_id,date' });
-    if (error) {
-      console.error('Batch error:', error);
-      hasError = true;
-      alert('Bulk apply error on batch: ' + error.message);
-      break;
-    }
-  }
-
-  if (!hasError) {
-    alert(`Applied ${statusVal} to ALL employees successfully!`);
-    
-    const { data: schedules } = await db.from('schedules')
-      .select('*')
-      .like('date', `${monthVal}%`);
-      
-    globalSchedules = schedules || [];
+  if (error) {
+    alert('Bulk apply error: ' + error.message);
+  } else {
+    alert(`Applied ${statusVal} successfully!`);
     await initAdminMatrix();
   }
 }
