@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -105,8 +105,14 @@ async function initAdminMatrix() {
   });
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
+  // 1. Fetch All Employees
   let { data: employees } = await db.from('employees').select('*');
-  const { data: schedules } = await db.from('schedules').select('*');
+  
+  // 2. Fetch ONLY schedules for the active month to prevent 1000-row overflow limit
+  const { data: schedules } = await db.from('schedules')
+    .select('*')
+    .gte('date', `${monthVal}-01`)
+    .lte('date', `${monthVal}-31`);
 
   if (!employees) return;
 
@@ -161,11 +167,11 @@ async function initAdminMatrix() {
 function updateAdminKpis(selectedMonth) {
   const todayStr = getTodayDateStr();
 
-  // 1. Total Employees
+  // Total Employees
   const totalElem = document.getElementById('adminKpiTotal');
   if (totalElem) totalElem.innerText = globalEmployees.length;
 
-  // 2. Today WFO and WFH Count
+  // Today WFO / WFH Count
   const todayScheds = globalSchedules.filter(s => s.date === todayStr);
   const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
   
@@ -174,7 +180,7 @@ function updateAdminKpis(selectedMonth) {
   if (wfoElem) wfoElem.innerText = wfoCount;
   if (wfhElem) wfhElem.innerText = Math.max(0, globalEmployees.length - wfoCount);
 
-  // 3. Leaves & Holidays
+  // Monthly Leaves and Holidays
   const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
   const leavesElem = document.getElementById('adminKpiLeaves');
   const holidaysElem = document.getElementById('adminKpiHolidays');
@@ -243,7 +249,10 @@ async function handleDropdownChange(selectElem, empId, date) {
     initAdminMatrix();
   } else {
     const monthVal = document.getElementById('adminMonthPicker').value;
-    const { data: schedules } = await db.from('schedules').select('*');
+    const { data: schedules } = await db.from('schedules')
+      .select('*')
+      .gte('date', `${monthVal}-01`)
+      .lte('date', `${monthVal}-31`);
     globalSchedules = schedules || [];
     updateAdminKpis(monthVal);
   }
@@ -272,6 +281,7 @@ async function submitEditEmployee() {
   if (error) {
     alert('Failed to update employee: ' + error.message);
   } else {
+    alert('Employee updated successfully!');
     closeEditEmpModal();
     initAdminMatrix();
   }
@@ -306,7 +316,7 @@ async function applyBulkStatus() {
     targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
   }
 
-  // 1. Re-fetch latest employees (para ma-sama pati ang mga bagong idinagdag na empleyado)
+  // 1. Fetch latest employees list
   const { data: latestEmployees } = await db.from('employees').select('*');
   if (latestEmployees && latestEmployees.length > 0) {
     globalEmployees = latestEmployees;
@@ -314,7 +324,7 @@ async function applyBulkStatus() {
 
   if (!confirm(`Apply "${statusVal}" to ALL ${globalEmployees.length} employee(s) across ${targetDates.length} date(s)?`)) return;
 
-  // 2. Prepare records batch payload
+  // 2. Build records array
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
@@ -322,8 +332,8 @@ async function applyBulkStatus() {
     });
   });
 
-  // 3. Save by Batch (Tig-300 rows para hindi mag-timeout/cut-off sa Supabase API limits)
-  const BATCH_SIZE = 300;
+  // 3. Batch upsert in chunks of 200 rows
+  const BATCH_SIZE = 200;
   let hasError = false;
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -410,6 +420,7 @@ function closeRequestsModal() {
 }
 
 function addNewEmployee() {
+  document.getElementById('addEmpName').value = '';
   document.getElementById('addEmpModal').classList.remove('hidden');
 }
 
@@ -418,7 +429,7 @@ function closeAddEmpModal() {
 }
 
 async function submitNewEmployee() {
-  const name = document.getElementById('addEmpName').value;
+  const name = document.getElementById('addEmpName').value.trim();
   const team = document.getElementById('addEmpTeam').value;
 
   if (!name) return alert('Please enter employee name.');
@@ -427,6 +438,7 @@ async function submitNewEmployee() {
   if (error) {
     alert('Failed to add employee: ' + error.message);
   } else {
+    alert('Employee added successfully!');
     closeAddEmpModal();
     initAdminMatrix();
   }
