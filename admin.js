@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -46,7 +46,8 @@ async function checkAdminAuth() {
   const { data: { session } } = await db.auth.getSession();
   
   if (!session) {
-    document.getElementById('loginModal')?.classList.remove('hidden');
+    const modal = document.getElementById('loginModal');
+    if (modal) modal.classList.remove('hidden');
     return false;
   }
 
@@ -58,7 +59,8 @@ async function checkAdminAuth() {
     return false;
   }
 
-  document.getElementById('loginModal')?.classList.add('hidden');
+  const modal = document.getElementById('loginModal');
+  if (modal) modal.classList.add('hidden');
   return true;
 }
 
@@ -105,10 +107,7 @@ async function initAdminMatrix() {
   });
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
-  // 1. Fetch All Employees
   let { data: employees } = await db.from('employees').select('*');
-  
-  // 2. Fetch ONLY schedules for the active month to prevent 1000-row overflow limit
   const { data: schedules } = await db.from('schedules')
     .select('*')
     .gte('date', `${monthVal}-01`)
@@ -165,72 +164,14 @@ async function initAdminMatrix() {
 }
 
 function updateAdminKpis(selectedMonth) {
-  const todayStr = getTodayDateStr();
-
-  // Total Employees
-  const totalElem = document.getElementById('adminKpiTotal');
-  if (totalElem) totalElem.innerText = globalEmployees.length;
-
-  // Today WFO / WFH Count
-  const todayScheds = globalSchedules.filter(s => s.date === todayStr);
-  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
-  
-  const wfoElem = document.getElementById('adminKpiWfo');
-  const wfhElem = document.getElementById('adminKpiWfh');
-  if (wfoElem) wfoElem.innerText = wfoCount;
-  if (wfhElem) wfhElem.innerText = Math.max(0, globalEmployees.length - wfoCount);
-
-  // Monthly Leaves and Holidays
   const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
+  const totalElem = document.getElementById('adminKpiTotal');
   const leavesElem = document.getElementById('adminKpiLeaves');
   const holidaysElem = document.getElementById('adminKpiHolidays');
-  
+
+  if (totalElem) totalElem.innerText = globalEmployees.length;
   if (leavesElem) leavesElem.innerText = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
   if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
-}
-
-function openKpiModal(type) {
-  const modal = document.getElementById('kpiModal');
-  const title = document.getElementById('modalTitle');
-  const list = document.getElementById('modalList');
-  const todayStr = getTodayDateStr();
-
-  if (!modal || !title || !list) return;
-
-  modal.classList.remove('hidden');
-  list.innerHTML = '';
-
-  let filtered = [];
-  if (type === 'ALL') {
-    title.innerText = 'All Employees';
-    filtered = globalEmployees.map(e => ({ name: e.name, team: e.team, status: 'Active' }));
-  } else {
-    title.innerText = `Today (${todayStr}) - ${type} List`;
-    globalEmployees.forEach(emp => {
-      const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === todayStr);
-      const status = sched ? sched.status : 'WFH';
-
-      if (type === 'WFO' && status === 'WFO') filtered.push({ name: emp.name, team: emp.team, status });
-      else if (type === 'WFH' && status === 'WFH') filtered.push({ name: emp.name, team: emp.team, status });
-      else if (type === 'LEAVE' && (status?.startsWith('VL') || status?.startsWith('SL'))) filtered.push({ name: emp.name, team: emp.team, status });
-      else if (type === 'HOLIDAY' && status === 'HOLIDAY') filtered.push({ name: emp.name, team: emp.team, status });
-    });
-  }
-
-  if (filtered.length === 0) {
-    list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No employees found for this status today.</p>`;
-  } else {
-    list.innerHTML = filtered.map(item => `
-      <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border text-xs">
-        <div><p class="font-bold text-slate-800">${item.name}</p><p class="text-[10px] text-slate-400">${item.team}</p></div>
-        <span class="px-2 py-0.5 rounded font-bold ${getBadgeClass(item.status, false)}">${item.status}</span>
-      </div>
-    `).join('');
-  }
-}
-
-function closeKpiModal() {
-  document.getElementById('kpiModal')?.classList.add('hidden');
 }
 
 async function handleDropdownChange(selectElem, empId, date) {
@@ -316,7 +257,6 @@ async function applyBulkStatus() {
     targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
   }
 
-  // 1. Fetch latest employees list
   const { data: latestEmployees } = await db.from('employees').select('*');
   if (latestEmployees && latestEmployees.length > 0) {
     globalEmployees = latestEmployees;
@@ -324,7 +264,6 @@ async function applyBulkStatus() {
 
   if (!confirm(`Apply "${statusVal}" to ALL ${globalEmployees.length} employee(s) across ${targetDates.length} date(s)?`)) return;
 
-  // 2. Build records array
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
@@ -332,8 +271,7 @@ async function applyBulkStatus() {
     });
   });
 
-  // 3. Batch upsert in chunks of 200 rows
-  const BATCH_SIZE = 200;
+  const BATCH_SIZE = 300;
   let hasError = false;
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -438,7 +376,7 @@ async function submitNewEmployee() {
   if (error) {
     alert('Failed to add employee: ' + error.message);
   } else {
-    alert('Employee added successfully!');
+    alert('Added successfully');
     closeAddEmpModal();
     initAdminMatrix();
   }
