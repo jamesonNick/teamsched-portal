@@ -5,6 +5,8 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let globalEmployees = [];
 let globalSchedules = [];
 
+// ============ HELPER FUNCTIONS ============
+
 function getCurrentYearMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -41,6 +43,24 @@ function getBadgeClass(status, isWeekend) {
   if (status === 'HOLIDAY') return 'badge-holiday';
   return 'badge-wfh';
 }
+
+// ============ TOAST NOTIFICATION ============
+
+function showToast(message, type = 'success') {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ============ AUTHENTICATION ============
 
 async function checkAdminAuth() {
   try {
@@ -99,6 +119,8 @@ async function handleLogout() {
   window.location.href = 'login.html';
 }
 
+// ============ ADMIN MATRIX ============
+
 async function initAdminMatrix() {
   const isAuth = await checkAdminAuth();
   if (!isAuth) return;
@@ -141,6 +163,7 @@ async function initAdminMatrix() {
   globalSchedules = schedules || [];
 
   updateAdminKpis(monthVal);
+  updateTodayStatus(); // <-- ADDED: Update today's status KPI
 
   // Filter employees
   let filteredEmployees = employees.filter(emp => {
@@ -149,7 +172,6 @@ async function initAdminMatrix() {
     return matchesSearch && matchesTeam;
   });
 
-  // Sort employees
   filteredEmployees.sort((a, b) => sortVal === 'ASC' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
 
   if (filteredEmployees.length === 0) {
@@ -157,7 +179,6 @@ async function initAdminMatrix() {
     return;
   }
 
-  // Build table body
   body.innerHTML = filteredEmployees.map(emp => {
     let rowHTML = `<tr><td class="p-2 border-r font-bold text-slate-800 sticky left-0 bg-white shadow-sm">${emp.name}</td><td class="p-2 border-r text-slate-500">${emp.team}</td>`;
 
@@ -193,6 +214,8 @@ async function initAdminMatrix() {
   }).join('');
 }
 
+// ============ KPI UPDATES ============
+
 function updateAdminKpis(selectedMonth) {
   const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
   const totalElem = document.getElementById('adminKpiTotal');
@@ -203,6 +226,23 @@ function updateAdminKpis(selectedMonth) {
   if (leavesElem) leavesElem.innerText = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
   if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
 }
+
+// ============ TODAY'S STATUS KPI ============
+
+function updateTodayStatus() {
+  const today = getTodayDateStr();
+  const todayScheds = globalSchedules.filter(s => s.date === today);
+  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
+  const wfhCount = todayScheds.filter(s => s.status === 'WFH').length;
+  const leaveCount = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
+  
+  const elem = document.getElementById('adminKpiToday');
+  if (elem) {
+    elem.innerText = `🏢${wfoCount} 🏠${wfhCount} ✈️${leaveCount}`;
+  }
+}
+
+// ============ DROPDOWN CHANGE ============
 
 async function handleDropdownChange(selectElem, empId, date) {
   const newStatus = selectElem.value;
@@ -224,11 +264,11 @@ async function handleDropdownChange(selectElem, empId, date) {
       alert('Error saving: ' + error.message);
       await initAdminMatrix();
     } else {
-      // Refresh global schedules
       const { data: schedules } = await db.from('schedules').select('*');
       globalSchedules = schedules || [];
       const monthVal = document.getElementById('adminMonthPicker').value;
       updateAdminKpis(monthVal);
+      updateTodayStatus(); // <-- ADDED: Update today's status after change
     }
   } catch (err) {
     alert('Error: ' + err.message);
@@ -236,7 +276,8 @@ async function handleDropdownChange(selectElem, empId, date) {
   }
 }
 
-// KPI Modal functions for Admin
+// ============ KPI MODAL ============
+
 function openAdminKpiModal(type) {
   const modal = document.getElementById('kpiModal');
   const title = document.getElementById('modalTitle');
@@ -251,18 +292,13 @@ function openAdminKpiModal(type) {
   if (type === 'ALL') {
     title.innerText = '👥 All Employees';
     employees = globalEmployees;
-  } else if (type === 'WFO') {
-    title.innerText = '🏢 Employees Working Onsite Today';
-    const empIds = todayScheds.filter(s => s.status === 'WFO').map(s => s.employee_id);
-    employees = globalEmployees.filter(e => empIds.includes(e.id));
-  } else if (type === 'WFH') {
-    title.innerText = '🏠 Employees Working From Home Today';
-    const empIds = todayScheds.filter(s => s.status === 'WFH').map(s => s.employee_id);
-    employees = globalEmployees.filter(e => empIds.includes(e.id));
   } else if (type === 'LEAVE') {
-    title.innerText = '✈️ Employees On Leave Today';
-    const empIds = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
-    employees = globalEmployees.filter(e => empIds.includes(e.id));
+    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
+    const monthScheds = globalSchedules.filter(s => s.date.startsWith(monthVal));
+    const empIds = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
+    const uniqueIds = [...new Set(empIds)];
+    employees = globalEmployees.filter(e => uniqueIds.includes(e.id));
+    title.innerText = '✈️ Employees on Leave This Month';
   } else if (type === 'HOLIDAY') {
     title.innerText = '🥳 Holidays This Month';
     const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
@@ -273,6 +309,35 @@ function openAdminKpiModal(type) {
     list.innerHTML = uniqueDates.length > 0 
       ? uniqueDates.map(d => `<div class="p-2 bg-emerald-50 rounded-lg text-center font-bold text-emerald-700">${d}</div>`).join('')
       : '<div class="p-2 text-center text-slate-400">No holidays this month</div>';
+    modal.classList.remove('hidden');
+    return;
+  } else if (type === 'TODAY') {
+    title.innerText = '📊 Today\'s Status Summary';
+    const wfoEmp = todayScheds.filter(s => s.status === 'WFO').map(s => s.employee_id);
+    const wfhEmp = todayScheds.filter(s => s.status === 'WFH').map(s => s.employee_id);
+    const leaveEmp = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
+    
+    let html = '';
+    if (wfoEmp.length > 0) {
+      html += `<div class="font-bold text-red-600 mt-2">🏢 WFO (${wfoEmp.length}):</div>`;
+      html += globalEmployees.filter(e => wfoEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-red-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (wfhEmp.length > 0) {
+      html += `<div class="font-bold text-blue-600 mt-2">🏠 WFH (${wfhEmp.length}):</div>`;
+      html += globalEmployees.filter(e => wfhEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-blue-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (leaveEmp.length > 0) {
+      html += `<div class="font-bold text-amber-600 mt-2">✈️ On Leave (${leaveEmp.length}):</div>`;
+      html += globalEmployees.filter(e => leaveEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-amber-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (!html) html = '<div class="p-2 text-center text-slate-400">No data for today</div>';
+    list.innerHTML = html;
     modal.classList.remove('hidden');
     return;
   }
@@ -295,7 +360,8 @@ function closeKpiModal() {
   document.getElementById('kpiModal').classList.add('hidden');
 }
 
-// Edit Employee functions
+// ============ EDIT EMPLOYEE ============
+
 function openEditEmpModal(id, name, team) {
   document.getElementById('editEmpId').value = id;
   document.getElementById('editEmpName').value = name;
@@ -329,10 +395,24 @@ async function submitEditEmployee() {
   }
 }
 
+// ============ BULK EDIT ============
+
 function toggleBulkInputMode() {
   const mode = document.getElementById('bulkMode').value;
-  document.getElementById('bulkDayContainer').classList.toggle('hidden', mode !== 'DAY');
-  document.getElementById('bulkWeekContainer').classList.toggle('hidden', mode !== 'WEEK');
+  const dayContainer = document.getElementById('bulkDayContainer');
+  const weekContainer = document.getElementById('bulkWeekContainer');
+  
+  // Hide all first
+  if (dayContainer) dayContainer.classList.add('hidden');
+  if (weekContainer) weekContainer.classList.add('hidden');
+  
+  // Show selected
+  if (mode === 'DAY' && dayContainer) {
+    dayContainer.classList.remove('hidden');
+  } else if (mode === 'WEEK' && weekContainer) {
+    weekContainer.classList.remove('hidden');
+  }
+  // MONTH mode - hide both
 }
 
 async function applyBulkStatus() {
@@ -349,64 +429,117 @@ async function applyBulkStatus() {
   } else if (mode === 'WEEK') {
     const weekStart = document.getElementById('bulkWeekInput').value;
     if (!weekStart) return alert('Select Monday start date.');
+    // Get Monday to Friday (5 working days)
     for (let i = 0; i < 5; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
-      targetDates.push(d.toISOString().split('T')[0]);
+      const dateStr = d.toISOString().split('T')[0];
+      // Check if it's a weekday (not Saturday or Sunday)
+      const dayOfWeek = d.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        targetDates.push(dateStr);
+      }
+    }
+    
+    if (targetDates.length === 0) {
+      alert('No weekdays found in the selected week.');
+      return;
     }
   } else if (mode === 'MONTH') {
-    targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
+    // Get all weekdays in the month
+    const allDates = getMonthDates(monthVal);
+    targetDates = allDates.filter(d => !d.isWeekend).map(d => d.dateStr);
+    
+    if (targetDates.length === 0) {
+      alert('No weekdays found in this month.');
+      return;
+    }
   }
 
-  // Fetch latest employees
-  const { data: latestEmployees } = await db.from('employees').select('*');
-  if (!latestEmployees || latestEmployees.length === 0) {
-    return alert('No employees found.');
+  // IMPORTANT: Fetch LATEST employees (including newly added ones)
+  const { data: latestEmployees, error: empError } = await db.from('employees').select('*');
+  
+  if (empError) {
+    alert('Error fetching employees: ' + empError.message);
+    return;
   }
+
+  if (!latestEmployees || latestEmployees.length === 0) {
+    alert('No employees found in the database.');
+    return;
+  }
+
+  // Update global employees
   globalEmployees = latestEmployees;
 
-  if (!confirm(`Apply "${statusVal}" to ALL ${globalEmployees.length} employee(s) across ${targetDates.length} date(s)?`)) return;
+  // Count total records to update
+  const totalRecords = globalEmployees.length * targetDates.length;
+  
+  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${globalEmployees.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
+    return;
+  }
 
+  // Prepare all records
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
-      records.push({ employee_id: emp.id, date, status: statusVal });
+      records.push({ 
+        employee_id: emp.id, 
+        date: date, 
+        status: statusVal 
+      });
     });
   });
 
-  // FIX: Process in chunks to avoid timeout issues
-  const chunkSize = 500;
+  // Process in chunks to avoid timeout
+  const chunkSize = 100; // Smaller chunks for better reliability
   let errors = [];
+  let updated = 0;
 
   for (let i = 0; i < records.length; i += chunkSize) {
     const chunk = records.slice(i, i + chunkSize);
-    const { error } = await db.from('schedules').upsert(chunk, { onConflict: 'employee_id,date' });
-    if (error) {
-      errors.push(error.message);
+    
+    try {
+      const { error } = await db.from('schedules').upsert(chunk, { 
+        onConflict: 'employee_id,date' 
+      });
+      
+      if (error) {
+        errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${error.message}`);
+      } else {
+        updated += chunk.length;
+      }
+      
+    } catch (err) {
+      errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${err.message}`);
     }
   }
 
+  // Show results
   if (errors.length > 0) {
-    alert('Bulk apply completed with errors: ' + errors.join(', '));
+    alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n\n...and ${errors.length - 3} more errors` : ''}`);
   } else {
-    alert(`Applied ${statusVal} successfully to ${records.length} records!`);
+    alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${globalEmployees.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
   // Refresh everything
   await refreshAllData();
 }
 
+// ============ REFRESH DATA ============
+
 async function refreshAllData() {
-  // Refresh admin data
-  await initAdminMatrix();
-  
-  // Also refresh user data if user page is open (localStorage flag or window reference)
-  // Since we can't directly call user's init, we'll just refresh admin side
-  // The user page will need to refresh on its own or use real-time
-  console.log('Data refreshed. User page needs manual refresh.');
+  try {
+    await initAdminMatrix();
+    await loadRequests();
+    showToast('✅ Data refreshed successfully!', 'success');
+  } catch (err) {
+    showToast('❌ Error refreshing data: ' + err.message, 'error');
+  }
 }
 
-// Requests functions
+// ============ REQUESTS FUNCTIONS ============
+
 async function loadRequests() {
   const badge = document.getElementById('requestBadge');
   const list = document.getElementById('requestsList');
@@ -493,7 +626,8 @@ function closeRequestsModal() {
   document.getElementById('requestsModal').classList.add('hidden');
 }
 
-// Employee CRUD functions
+// ============ EMPLOYEE CRUD ============
+
 function addNewEmployee() {
   document.getElementById('addEmpName').value = '';
   document.getElementById('addEmpModal').classList.remove('hidden');
@@ -527,9 +661,7 @@ async function deleteEmployee(id) {
   if (!confirm('Delete employee record permanently? This will also delete their schedule data.')) return;
 
   try {
-    // Delete schedules first (foreign key constraint)
     await db.from('schedules').delete().eq('employee_id', id);
-    // Then delete employee
     const { error } = await db.from('employees').delete().eq('id', id);
     if (error) {
       alert('Failed to delete employee: ' + error.message);
@@ -541,32 +673,27 @@ async function deleteEmployee(id) {
   }
 }
 
-// Add KPI click handlers to admin page
+// ============ KPI CLICK HANDLERS ============
+
 function setupAdminKpiClickHandlers() {
-  const kpiCards = document.querySelectorAll('#adminContainer .grid .bg-white, #adminContainer .grid .bg-amber-50, #adminContainer .grid .bg-emerald-50, #adminContainer .grid .bg-slate-50');
-  kpiCards.forEach((card, index) => {
+  // Get all KPI cards with onclick attribute
+  const kpiCards = document.querySelectorAll('[onclick^="openAdminKpiModal"]');
+  kpiCards.forEach(card => {
     card.style.cursor = 'pointer';
-    card.addEventListener('click', () => {
-      const types = ['ALL', 'WFO', 'WFH', 'LEAVE', 'HOLIDAY'];
-      if (index < types.length) {
-        openAdminKpiModal(types[index]);
-      }
-    });
   });
 }
 
+// ============ WINDOW LOAD ============
+
 window.addEventListener('DOMContentLoaded', async () => {
-  // Set month picker to current month
   const picker = document.getElementById('adminMonthPicker');
   if (picker) picker.value = getCurrentYearMonth();
   
-  // Set bulk date inputs
   const bulkDate = document.getElementById('bulkDateInput');
   if (bulkDate) bulkDate.value = getTodayDateStr();
   
   const bulkWeek = document.getElementById('bulkWeekInput');
   if (bulkWeek) {
-    // Set to Monday of current week
     const today = new Date();
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
@@ -581,137 +708,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupAdminKpiClickHandlers();
   }
 });
-
-// Add this to admin.js
-
-// Toast notification
-function showToast(message, type = 'success') {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = `toast ${type}`;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3000);
-}
-
-// Today's status KPI
-function updateTodayStatus() {
-  const today = getTodayDateStr();
-  const todayScheds = globalSchedules.filter(s => s.date === today);
-  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
-  const wfhCount = todayScheds.filter(s => s.status === 'WFH').length;
-  const leaveCount = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
-  
-  const elem = document.getElementById('adminKpiToday');
-  if (elem) {
-    elem.innerText = `🏢${wfoCount} 🏠${wfhCount} ✈️${leaveCount}`;
-  }
-}
-
-// Enhanced openAdminKpiModal
-function openAdminKpiModal(type) {
-  const modal = document.getElementById('kpiModal');
-  const title = document.getElementById('modalTitle');
-  const list = document.getElementById('modalList');
-
-  if (!modal || !title || !list) return;
-
-  const today = getTodayDateStr();
-  const todayScheds = globalSchedules.filter(s => s.date === today);
-  let employees = [];
-
-  if (type === 'ALL') {
-    title.innerText = '👥 All Employees';
-    employees = globalEmployees;
-  } else if (type === 'LEAVE') {
-    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
-    const monthScheds = globalSchedules.filter(s => s.date.startsWith(monthVal));
-    const empIds = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
-    const uniqueIds = [...new Set(empIds)];
-    employees = globalEmployees.filter(e => uniqueIds.includes(e.id));
-    title.innerText = '✈️ Employees on Leave This Month';
-  } else if (type === 'HOLIDAY') {
-    title.innerText = '🥳 Holidays This Month';
-    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
-    const holidayDates = globalSchedules
-      .filter(s => s.status === 'HOLIDAY' && s.date.startsWith(monthVal))
-      .map(s => s.date);
-    const uniqueDates = [...new Set(holidayDates)];
-    list.innerHTML = uniqueDates.length > 0 
-      ? uniqueDates.map(d => `<div class="p-2 bg-emerald-50 rounded-lg text-center font-bold text-emerald-700">${d}</div>`).join('')
-      : '<div class="p-2 text-center text-slate-400">No holidays this month</div>';
-    modal.classList.remove('hidden');
-    return;
-  } else if (type === 'TODAY') {
-    title.innerText = '📊 Today\'s Status Summary';
-    const wfoEmp = todayScheds.filter(s => s.status === 'WFO').map(s => s.employee_id);
-    const wfhEmp = todayScheds.filter(s => s.status === 'WFH').map(s => s.employee_id);
-    const leaveEmp = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
-    
-    let html = '';
-    if (wfoEmp.length > 0) {
-      html += `<div class="font-bold text-red-600 mt-2">🏢 WFO (${wfoEmp.length}):</div>`;
-      html += globalEmployees.filter(e => wfoEmp.includes(e.id)).map(e => 
-        `<div class="p-1.5 bg-red-50 rounded-lg text-xs">${e.name}</div>`
-      ).join('');
-    }
-    if (wfhEmp.length > 0) {
-      html += `<div class="font-bold text-blue-600 mt-2">🏠 WFH (${wfhEmp.length}):</div>`;
-      html += globalEmployees.filter(e => wfhEmp.includes(e.id)).map(e => 
-        `<div class="p-1.5 bg-blue-50 rounded-lg text-xs">${e.name}</div>`
-      ).join('');
-    }
-    if (leaveEmp.length > 0) {
-      html += `<div class="font-bold text-amber-600 mt-2">✈️ On Leave (${leaveEmp.length}):</div>`;
-      html += globalEmployees.filter(e => leaveEmp.includes(e.id)).map(e => 
-        `<div class="p-1.5 bg-amber-50 rounded-lg text-xs">${e.name}</div>`
-      ).join('');
-    }
-    if (!html) html = '<div class="p-2 text-center text-slate-400">No data for today</div>';
-    list.innerHTML = html;
-    modal.classList.remove('hidden');
-    return;
-  }
-
-  if (employees.length === 0) {
-    list.innerHTML = '<div class="p-2 text-center text-slate-400">No employees found</div>';
-  } else {
-    list.innerHTML = employees.map(e => 
-      `<div class="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
-        <span class="font-bold text-slate-800">${e.name}</span>
-        <span class="text-xs text-slate-500">${e.team}</span>
-      </div>`
-    ).join('');
-  }
-
-  modal.classList.remove('hidden');
-}
-
-function closeKpiModal() {
-  document.getElementById('kpiModal').classList.add('hidden');
-}
-
-// Enhanced refreshAllData
-async function refreshAllData() {
-  const btn = event?.target;
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '⏳ Refreshing...';
-  }
-  
-  try {
-    await initAdminMatrix();
-    await loadRequests();
-    showToast('Data refreshed successfully!', 'success');
-  } catch (err) {
-    showToast('Error refreshing data: ' + err.message, 'error');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '🔄 Refresh';
-    }
-  }
-}
-
-// Update initAdminMatrix to call updateTodayStatus
-// Add this line at the end of initAdminMatrix function:
-// updateTodayStatus();
