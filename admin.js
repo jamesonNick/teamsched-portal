@@ -43,40 +43,54 @@ function getBadgeClass(status, isWeekend) {
 }
 
 async function checkAdminAuth() {
-  const { data: { session } } = await db.auth.getSession();
-  
-  if (!session) {
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    
+    if (!session) {
+      const modal = document.getElementById('loginModal');
+      if (modal) modal.classList.remove('hidden');
+      return false;
+    }
+
+    const { data: profile, error } = await db.from('profiles').select('role').eq('id', session.user.id).single();
+    if (error || !profile || profile.role !== 'admin') {
+      alert('Access denied. Admin privileges required.');
+      await db.auth.signOut();
+      window.location.href = 'login.html';
+      return false;
+    }
+
     const modal = document.getElementById('loginModal');
-    if (modal) modal.classList.remove('hidden');
+    if (modal) modal.classList.add('hidden');
+    return true;
+  } catch (err) {
+    console.error('Auth check error:', err);
     return false;
   }
-
-  const { data: profile } = await db.from('profiles').select('role').eq('id', session.user.id).single();
-  if (!profile || profile.role !== 'admin') {
-    alert('Access denied. Admin privileges required.');
-    await db.auth.signOut();
-    window.location.href = 'index.html';
-    return false;
-  }
-
-  const modal = document.getElementById('loginModal');
-  if (modal) modal.classList.add('hidden');
-  return true;
 }
 
 async function handleLogin() {
   const email = document.getElementById('loginEmail').value;
   const password = document.getElementById('loginPassword').value;
 
-  const { error } = await db.auth.signInWithPassword({ email, password });
-  if (error) {
-    alert('Authentication failed: ' + error.message);
-  } else {
-    const isAuth = await checkAdminAuth();
-    if (isAuth) {
-      initAdminMatrix();
-      loadRequests();
+  if (!email || !password) {
+    alert('Please enter both email and password.');
+    return;
+  }
+
+  try {
+    const { error } = await db.auth.signInWithPassword({ email, password });
+    if (error) {
+      alert('Authentication failed: ' + error.message);
+    } else {
+      const isAuth = await checkAdminAuth();
+      if (isAuth) {
+        await initAdminMatrix();
+        await loadRequests();
+      }
     }
+  } catch (err) {
+    alert('Login error: ' + err.message);
   }
 }
 
@@ -100,6 +114,7 @@ async function initAdminMatrix() {
   const teamVal = document.getElementById('teamFilter')?.value || 'ALL';
   const sortVal = document.getElementById('sortOrder')?.value || 'ASC';
 
+  // Build header
   let headHTML = `<tr><th class="p-2 border-r bg-slate-900 sticky left-0 z-20 min-w-[180px]">EMPLOYEE NAME</th><th class="p-2 border-r bg-slate-900 min-w-[100px]">TEAM</th>`;
   fullMonthDates.forEach(d => {
     const bgClass = d.isWeekend ? 'bg-slate-700 text-slate-400' : 'bg-amber-400 text-slate-900 font-bold';
@@ -107,25 +122,43 @@ async function initAdminMatrix() {
   });
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
-  let { data: employees } = await db.from('employees').select('*');
-  const { data: schedules } = await db.from('schedules').select('*');
+  // Fetch data
+  const { data: employees, error: empError } = await db.from('employees').select('*');
+  const { data: schedules, error: schedError } = await db.from('schedules').select('*');
 
-  if (!employees) return;
+  if (empError) {
+    console.error('Error fetching employees:', empError);
+    body.innerHTML = `<tr><td colspan="35" class="p-4 text-center text-red-500">Error loading employees</td></tr>`;
+    return;
+  }
+
+  if (!employees) {
+    body.innerHTML = `<tr><td colspan="35" class="p-4 text-center text-slate-400">No employees found</td></tr>`;
+    return;
+  }
 
   globalEmployees = employees;
   globalSchedules = schedules || [];
 
   updateAdminKpis(monthVal);
 
-  employees = employees.filter(emp => {
+  // Filter employees
+  let filteredEmployees = employees.filter(emp => {
     const matchesSearch = emp.name.toLowerCase().includes(searchVal);
     const matchesTeam = teamVal === 'ALL' || emp.team === teamVal;
     return matchesSearch && matchesTeam;
   });
 
-  employees.sort((a, b) => sortVal === 'ASC' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
+  // Sort employees
+  filteredEmployees.sort((a, b) => sortVal === 'ASC' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
 
-  body.innerHTML = employees.map(emp => {
+  if (filteredEmployees.length === 0) {
+    body.innerHTML = `<tr><td colspan="35" class="p-4 text-center text-slate-400">No employees match your filters</td></tr>`;
+    return;
+  }
+
+  // Build table body
+  body.innerHTML = filteredEmployees.map(emp => {
     let rowHTML = `<tr><td class="p-2 border-r font-bold text-slate-800 sticky left-0 bg-white shadow-sm">${emp.name}</td><td class="p-2 border-r text-slate-500">${emp.team}</td>`;
 
     fullMonthDates.forEach(d => {
@@ -175,24 +208,94 @@ async function handleDropdownChange(selectElem, empId, date) {
   const newStatus = selectElem.value;
   
   if (!confirm(`Confirm schedule update to "${newStatus}" for date ${date}?`)) {
-    initAdminMatrix();
+    await initAdminMatrix();
     return;
   }
 
   selectElem.className = `text-[9px] font-bold p-1 rounded border ${getBadgeClass(newStatus, false)} outline-none`;
 
-  const { error } = await db.from('schedules').upsert({ employee_id: empId, date: date, status: newStatus }, { onConflict: 'employee_id,date' });
-  if (error) {
-    alert('Error saving: ' + error.message);
-    initAdminMatrix();
-  } else {
-    const monthVal = document.getElementById('adminMonthPicker').value;
-    const { data: schedules } = await db.from('schedules').select('*');
-    globalSchedules = schedules || [];
-    updateAdminKpis(monthVal);
+  try {
+    const { error } = await db.from('schedules').upsert(
+      { employee_id: empId, date: date, status: newStatus }, 
+      { onConflict: 'employee_id,date' }
+    );
+    
+    if (error) {
+      alert('Error saving: ' + error.message);
+      await initAdminMatrix();
+    } else {
+      // Refresh global schedules
+      const { data: schedules } = await db.from('schedules').select('*');
+      globalSchedules = schedules || [];
+      const monthVal = document.getElementById('adminMonthPicker').value;
+      updateAdminKpis(monthVal);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+    await initAdminMatrix();
   }
 }
 
+// KPI Modal functions for Admin
+function openAdminKpiModal(type) {
+  const modal = document.getElementById('kpiModal');
+  const title = document.getElementById('modalTitle');
+  const list = document.getElementById('modalList');
+
+  if (!modal || !title || !list) return;
+
+  const today = getTodayDateStr();
+  const todayScheds = globalSchedules.filter(s => s.date === today);
+  let employees = [];
+
+  if (type === 'ALL') {
+    title.innerText = '👥 All Employees';
+    employees = globalEmployees;
+  } else if (type === 'WFO') {
+    title.innerText = '🏢 Employees Working Onsite Today';
+    const empIds = todayScheds.filter(s => s.status === 'WFO').map(s => s.employee_id);
+    employees = globalEmployees.filter(e => empIds.includes(e.id));
+  } else if (type === 'WFH') {
+    title.innerText = '🏠 Employees Working From Home Today';
+    const empIds = todayScheds.filter(s => s.status === 'WFH').map(s => s.employee_id);
+    employees = globalEmployees.filter(e => empIds.includes(e.id));
+  } else if (type === 'LEAVE') {
+    title.innerText = '✈️ Employees On Leave Today';
+    const empIds = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
+    employees = globalEmployees.filter(e => empIds.includes(e.id));
+  } else if (type === 'HOLIDAY') {
+    title.innerText = '🥳 Holidays This Month';
+    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
+    const holidayDates = globalSchedules
+      .filter(s => s.status === 'HOLIDAY' && s.date.startsWith(monthVal))
+      .map(s => s.date);
+    const uniqueDates = [...new Set(holidayDates)];
+    list.innerHTML = uniqueDates.length > 0 
+      ? uniqueDates.map(d => `<div class="p-2 bg-emerald-50 rounded-lg text-center font-bold text-emerald-700">${d}</div>`).join('')
+      : '<div class="p-2 text-center text-slate-400">No holidays this month</div>';
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  if (employees.length === 0) {
+    list.innerHTML = '<div class="p-2 text-center text-slate-400">No employees found</div>';
+  } else {
+    list.innerHTML = employees.map(e => 
+      `<div class="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
+        <span class="font-bold text-slate-800">${e.name}</span>
+        <span class="text-xs text-slate-500">${e.team}</span>
+      </div>`
+    ).join('');
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeKpiModal() {
+  document.getElementById('kpiModal').classList.add('hidden');
+}
+
+// Edit Employee functions
 function openEditEmpModal(id, name, team) {
   document.getElementById('editEmpId').value = id;
   document.getElementById('editEmpName').value = name;
@@ -211,14 +314,18 @@ async function submitEditEmployee() {
 
   if (!name) return alert('Please enter employee name.');
 
-  const { error } = await db.from('employees').update({ name, team }).eq('id', id);
+  try {
+    const { error } = await db.from('employees').update({ name, team }).eq('id', id);
 
-  if (error) {
-    alert('Failed to update employee: ' + error.message);
-  } else {
-    alert('Employee updated successfully!');
-    closeEditEmpModal();
-    initAdminMatrix();
+    if (error) {
+      alert('Failed to update employee: ' + error.message);
+    } else {
+      alert('Employee updated successfully!');
+      closeEditEmpModal();
+      await initAdminMatrix();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 
@@ -251,10 +358,12 @@ async function applyBulkStatus() {
     targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
   }
 
+  // Fetch latest employees
   const { data: latestEmployees } = await db.from('employees').select('*');
-  if (latestEmployees && latestEmployees.length > 0) {
-    globalEmployees = latestEmployees;
+  if (!latestEmployees || latestEmployees.length === 0) {
+    return alert('No employees found.');
   }
+  globalEmployees = latestEmployees;
 
   if (!confirm(`Apply "${statusVal}" to ALL ${globalEmployees.length} employee(s) across ${targetDates.length} date(s)?`)) return;
 
@@ -265,70 +374,113 @@ async function applyBulkStatus() {
     });
   });
 
-  const { error } = await db.from('schedules').upsert(records, { onConflict: 'employee_id,date' });
+  // FIX: Process in chunks to avoid timeout issues
+  const chunkSize = 500;
+  let errors = [];
 
-  if (error) {
-    alert('Bulk apply error: ' + error.message);
-  } else {
-    alert(`Applied ${statusVal} successfully!`);
-    await initAdminMatrix();
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    const { error } = await db.from('schedules').upsert(chunk, { onConflict: 'employee_id,date' });
+    if (error) {
+      errors.push(error.message);
+    }
   }
+
+  if (errors.length > 0) {
+    alert('Bulk apply completed with errors: ' + errors.join(', '));
+  } else {
+    alert(`Applied ${statusVal} successfully to ${records.length} records!`);
+  }
+
+  // Refresh everything
+  await refreshAllData();
 }
 
+async function refreshAllData() {
+  // Refresh admin data
+  await initAdminMatrix();
+  
+  // Also refresh user data if user page is open (localStorage flag or window reference)
+  // Since we can't directly call user's init, we'll just refresh admin side
+  // The user page will need to refresh on its own or use real-time
+  console.log('Data refreshed. User page needs manual refresh.');
+}
+
+// Requests functions
 async function loadRequests() {
   const badge = document.getElementById('requestBadge');
   const list = document.getElementById('requestsList');
 
-  const { data: requests, error } = await db.from('requests').select('*').order('created_at', { ascending: false });
+  try {
+    const { data: requests, error } = await db.from('requests').select('*').order('created_at', { ascending: false });
 
-  if (error || !requests || requests.length === 0) {
-    if (badge) badge.classList.add('hidden');
-    if (list) list.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-slate-400">No pending requests found.</td></tr>`;
-    return;
-  }
+    if (error) {
+      console.error('Error loading requests:', error);
+      if (badge) badge.classList.add('hidden');
+      if (list) list.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-red-500">Error loading requests</td></tr>`;
+      return;
+    }
 
-  if (badge) {
-    badge.innerText = requests.length;
-    badge.classList.remove('hidden');
-  }
+    if (!requests || requests.length === 0) {
+      if (badge) badge.classList.add('hidden');
+      if (list) list.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-slate-400">No pending requests found.</td></tr>`;
+      return;
+    }
 
-  if (list) {
-    list.innerHTML = requests.map(r => `
-      <tr class="hover:bg-slate-50">
-        <td class="p-2 font-bold text-slate-800">${r.employee_name}</td>
-        <td class="p-2 text-slate-600">${r.date}</td>
-        <td class="p-2 font-bold text-indigo-600">${r.request_type}</td>
-        <td class="p-2 text-slate-500">${r.message || 'N/A'}</td>
-        <td class="p-2 text-center">
-          <button onclick="deleteSingleRequest(${r.id})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2 py-1 rounded transition text-[10px]" title="Clear Request">Clear 🗑️</button>
-        </td>
-      </tr>
-    `).join('');
+    if (badge) {
+      badge.innerText = requests.length;
+      badge.classList.remove('hidden');
+    }
+
+    if (list) {
+      list.innerHTML = requests.map(r => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 font-bold text-slate-800">${r.employee_name || 'Unknown'}</td>
+          <td class="p-2 text-slate-600">${r.date || 'N/A'}</td>
+          <td class="p-2 font-bold text-indigo-600">${r.request_type || 'N/A'}</td>
+          <td class="p-2 text-slate-500">${r.message || 'N/A'}</td>
+          <td class="p-2 text-center">
+            <button onclick="deleteSingleRequest(${r.id})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2 py-1 rounded transition text-[10px]" title="Clear Request">Clear 🗑️</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch (err) {
+    console.error('Load requests error:', err);
+    if (list) list.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-red-500">Error loading requests</td></tr>`;
   }
 }
 
 async function deleteSingleRequest(id) {
   if (!confirm('Mark this request as resolved/cleared?')) return;
 
-  const { error } = await db.from('requests').delete().eq('id', id);
+  try {
+    const { error } = await db.from('requests').delete().eq('id', id);
 
-  if (error) {
-    alert('Failed to delete request: ' + error.message);
-  } else {
-    await loadRequests();
+    if (error) {
+      alert('Failed to delete request: ' + error.message);
+    } else {
+      await loadRequests();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 
 async function clearAllRequests() {
   if (!confirm('Are you sure you want to clear ALL submitted requests?')) return;
 
-  const { error } = await db.from('requests').delete().gt('id', 0);
+  try {
+    const { error } = await db.from('requests').delete().gt('id', 0);
 
-  if (error) {
-    alert('Failed to clear all requests: ' + error.message);
-  } else {
-    alert('All requests have been cleared successfully.');
-    await loadRequests();
+    if (error) {
+      alert('Failed to clear all requests: ' + error.message);
+    } else {
+      alert('All requests have been cleared successfully.');
+      await loadRequests();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 
@@ -341,6 +493,7 @@ function closeRequestsModal() {
   document.getElementById('requestsModal').classList.add('hidden');
 }
 
+// Employee CRUD functions
 function addNewEmployee() {
   document.getElementById('addEmpName').value = '';
   document.getElementById('addEmpModal').classList.remove('hidden');
@@ -356,33 +509,75 @@ async function submitNewEmployee() {
 
   if (!name) return alert('Please enter employee name.');
 
-  const { error } = await db.from('employees').insert([{ name, team }]);
-  if (error) {
-    alert('Failed to add employee: ' + error.message);
-  } else {
-    alert('Added successfully');
-    closeAddEmpModal();
-    initAdminMatrix();
+  try {
+    const { error } = await db.from('employees').insert([{ name, team }]);
+    if (error) {
+      alert('Failed to add employee: ' + error.message);
+    } else {
+      alert('Added successfully');
+      closeAddEmpModal();
+      await initAdminMatrix();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 
 async function deleteEmployee(id) {
-  if (confirm('Delete employee record permanently?')) {
-    await db.from('employees').delete().eq('id', id);
-    initAdminMatrix();
+  if (!confirm('Delete employee record permanently? This will also delete their schedule data.')) return;
+
+  try {
+    // Delete schedules first (foreign key constraint)
+    await db.from('schedules').delete().eq('employee_id', id);
+    // Then delete employee
+    const { error } = await db.from('employees').delete().eq('id', id);
+    if (error) {
+      alert('Failed to delete employee: ' + error.message);
+    } else {
+      await initAdminMatrix();
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+// Add KPI click handlers to admin page
+function setupAdminKpiClickHandlers() {
+  const kpiCards = document.querySelectorAll('#adminContainer .grid .bg-white, #adminContainer .grid .bg-amber-50, #adminContainer .grid .bg-emerald-50, #adminContainer .grid .bg-slate-50');
+  kpiCards.forEach((card, index) => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => {
+      const types = ['ALL', 'WFO', 'WFH', 'LEAVE', 'HOLIDAY'];
+      if (index < types.length) {
+        openAdminKpiModal(types[index]);
+      }
+    });
+  });
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  // Set month picker to current month
   const picker = document.getElementById('adminMonthPicker');
   if (picker) picker.value = getCurrentYearMonth();
-  const bulkPicker = document.getElementById('bulkDateInput');
-  if (bulkPicker) bulkPicker.value = getTodayDateStr();
   
-  checkAdminAuth().then(isAuth => {
-    if (isAuth) {
-      initAdminMatrix();
-      loadRequests();
-    }
-  });
+  // Set bulk date inputs
+  const bulkDate = document.getElementById('bulkDateInput');
+  if (bulkDate) bulkDate.value = getTodayDateStr();
+  
+  const bulkWeek = document.getElementById('bulkWeekInput');
+  if (bulkWeek) {
+    // Set to Monday of current week
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(today.setDate(diff));
+    bulkWeek.value = monday.toISOString().split('T')[0];
+  }
+  
+  const isAuth = await checkAdminAuth();
+  if (isAuth) {
+    await initAdminMatrix();
+    await loadRequests();
+    setupAdminKpiClickHandlers();
+  }
 });
