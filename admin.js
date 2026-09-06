@@ -242,7 +242,7 @@ function updateTodayStatus() {
   }
 }
 
-// ============ DROPDOWN CHANGE ============
+// ============ DROPDOWN CHANGE (FIXED) ============
 
 async function handleDropdownChange(selectElem, empId, date) {
   const newStatus = selectElem.value.trim();
@@ -399,7 +399,7 @@ async function submitEditEmployee() {
   }
 }
 
-// ============ BULK EDIT (FULLY FIXED) ============
+// ============ BULK EDIT (FIXED) ============
 
 function toggleBulkInputMode() {
   const mode = document.getElementById('bulkMode').value;
@@ -454,10 +454,11 @@ async function applyBulkStatus() {
     return;
   }
 
-  // ============ FIX: Get ALL employees DIRECTLY from database ============
+  // Fetch ALL employees
   const { data: allEmployees, error: empError } = await db
     .from('employees')
-    .select('*');
+    .select('*')
+    .order('name', { ascending: true });
   
   if (empError) {
     alert('Error fetching employees: ' + empError.message);
@@ -469,8 +470,6 @@ async function applyBulkStatus() {
     return;
   }
 
-  console.log(`📊 Found ${allEmployees.length} employees to update`);
-
   const employeesToUpdate = allEmployees;
   const totalRecords = employeesToUpdate.length * targetDates.length;
   
@@ -478,24 +477,11 @@ async function applyBulkStatus() {
                   mode === 'MONTH' ? 'weekdays only' : 
                   '1 day';
   
-  // Show detailed confirmation
-  let confirmMessage = `⚠️ Apply "${statusVal}" to:\n\n`;
-  confirmMessage += `📊 ${employeesToUpdate.length} employee(s)\n`;
-  confirmMessage += `📅 ${targetDates.length} date(s) (${dayType})\n`;
-  confirmMessage += `📝 ${totalRecords} total record(s)\n\n`;
-  confirmMessage += `Employees:\n`;
-  employeesToUpdate.slice(0, 10).forEach(e => {
-    confirmMessage += `   - ${e.name} (${e.team})\n`;
-  });
-  if (employeesToUpdate.length > 10) {
-    confirmMessage += `   ... and ${employeesToUpdate.length - 10} more\n`;
-  }
-  
-  if (!confirm(confirmMessage)) {
+  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s) (${dayType})\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
     return;
   }
 
-  // ============ FIX: Process ALL records ============
+  // Prepare all records
   let records = [];
   employeesToUpdate.forEach(emp => {
     targetDates.forEach(date => {
@@ -507,14 +493,10 @@ async function applyBulkStatus() {
     });
   });
 
-  console.log(`📝 Preparing ${records.length} records...`);
-
-  // Process in chunks para iwas timeout
-  const chunkSize = 50;
+  // Process in chunks
+  const chunkSize = 100;
   let errors = [];
   let updated = 0;
-
-  showToast(`⏳ Updating ${totalRecords} records...`, 'info');
 
   for (let i = 0; i < records.length; i += chunkSize) {
     const chunk = records.slice(i, i + chunkSize);
@@ -526,71 +508,42 @@ async function applyBulkStatus() {
       
       if (error) {
         errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${error.message}`);
-        console.error(`❌ Chunk ${Math.floor(i/chunkSize) + 1} error:`, error);
       } else {
         updated += chunk.length;
-        console.log(`✅ Chunk ${Math.floor(i/chunkSize) + 1} completed (${chunk.length} records)`);
       }
       
     } catch (err) {
       errors.push(`Chunk ${Math.floor(i/chunkSize) + 1}: ${err.message}`);
-      console.error(`❌ Chunk ${Math.floor(i/chunkSize) + 1} error:`, err);
     }
   }
 
-  // ============ SHOW RESULTS ============
+  // Show results
   if (errors.length > 0) {
     alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}`);
   } else {
     alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
-  // ============ FORCE REFRESH ============
+  // Refresh everything
   globalEmployees = allEmployees;
+  await initAdminMatrix();
   
-  // Fetch latest schedules
   const { data: schedules } = await db.from('schedules').select('*');
   globalSchedules = schedules || [];
-  
-  // Re-render the table
-  await initAdminMatrix();
   updateTodayStatus();
   
-  showToast(`✅ Applied "${statusVal}" to ${updated} records`, 'success');
+  showToast(`✅ Applied "${statusVal}" to ${targetDates.length} days`, 'success');
 
-  // ============ VERIFY ALL ============
-  console.log('🔍 VERIFYING ALL UPDATES...');
-  let allCorrect = true;
-  
+  // ============ VERIFY ============
+  console.log('🔍 Verifying updates...');
   for (const date of targetDates) {
     const { data: check } = await db.from('schedules')
       .select('employee_id, status')
       .eq('date', date);
-    
     if (check && check.length > 0) {
       const correctCount = check.filter(s => s.status === statusVal).length;
-      const total = check.length;
-      console.log(`📅 ${date}: ${correctCount}/${total} records are "${statusVal}"`);
-      
-      if (correctCount < total) {
-        allCorrect = false;
-        const mismatches = check.filter(s => s.status !== statusVal);
-        console.warn(`⚠️ ${date}: ${mismatches.length} mismatches`);
-        mismatches.slice(0, 5).forEach(m => {
-          const emp = allEmployees.find(e => e.id === m.employee_id);
-          console.log(`   - ${emp?.name || 'Unknown'}: ${m.status}`);
-        });
-        if (mismatches.length > 5) {
-          console.log(`   ... and ${mismatches.length - 5} more`);
-        }
-      }
+      console.log(`📅 ${date}: ${correctCount}/${check.length} records are "${statusVal}"`);
     }
-  }
-  
-  if (allCorrect) {
-    console.log('🎉 ALL RECORDS VERIFIED CORRECT!');
-  } else {
-    console.warn('⚠️ Some records may not have been updated correctly.');
   }
 }
 
