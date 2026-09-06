@@ -1,57 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Admin Login - Supabase</title>
-    <!-- Include Supabase JS SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IAT - Admin Login</title>
+  
+  <!-- Tailwind CSS & Supabase JS SDK -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
 </head>
-<body>
-    <h2>Admin Login</h2>
-    <form id="loginForm">
-        <input type="email" id="email" placeholder="Email ng Manager" required><br><br>
-        <input type="password" id="password" placeholder="Password" required><br><br>
-        <button type="submit">Log In</button>
+<body class="bg-slate-900 text-slate-800 h-screen flex items-center justify-center p-4">
+
+  <!-- Login Card -->
+  <div class="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl space-y-6 border border-slate-700">
+    <div class="text-center space-y-1">
+      <div class="text-4xl mb-2">🛠️</div>
+      <h2 class="text-xl font-extrabold text-slate-900">Admin Portal</h2>
+      <p class="text-xs text-rose-500 font-semibold">Authorized Personnel Only</p>
+    </div>
+
+    <!-- Error Alert Box -->
+    <div id="errorBox" class="hidden bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium text-center"></div>
+
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1">Admin Email</label>
+        <input type="email" id="email" placeholder="admin@one-line.com" required
+          class="w-full border border-slate-300 p-2.5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-semibold transition">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1">Password</label>
+        <input type="password" id="password" placeholder="••••••••" required
+          class="w-full border border-slate-300 p-2.5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-semibold transition">
+      </div>
+
+      <button type="submit" id="loginBtn"
+        class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg flex justify-center items-center gap-2">
+        <span>Sign In to Dashboard</span>
+      </button>
     </form>
-    <p id="errorMsg" style="color: red; display: none;"></p>
+  </div>
 
-    <script>
-        // 1. I-initialize ang Supabase (Palitan ng sarili mong Credentials)
-       const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 2. Kapag naka-login na pala ang session, dumeretso agad sa admin.html
-        async function checkExistingSession() {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                window.location.href = "admin.html";
-            }
-        }
-        checkExistingSession();
+    // 2. Auto-redirect kung naka-login na
+    async function checkExistingSession() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        window.location.href = "admin.html";
+      }
+    }
+    checkExistingSession();
 
-        // 3. Login Event
-        document.getElementById("loginForm").addEventListener("submit", async function(e) {
-            e.preventDefault();
-            const email = document.getElementById("email").value;
-            const password = document.getElementById("password").value;
+    // 3. Form Submission Handling
+    document.getElementById("loginForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+      
+      const emailInput = document.getElementById("email").value.trim();
+      const passwordInput = document.getElementById("password").value;
+      const errorBox = document.getElementById("errorBox");
+      const loginBtn = document.getElementById("loginBtn");
 
-            // Ipadala sa Supabase Auth para i-verify
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
+      // Reset UI state
+      errorBox.classList.add("hidden");
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = "<span>Authenticating...</span>";
 
-            if (error) {
-                document.getElementById("errorMsg").innerText = error.message;
-                document.getElementById("errorMsg").style.display = "block";
-            } else {
-                // Awtomatikong nagse-save ng secure session ang Supabase!
-                window.location.href = "admin.html";
-            }
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: emailInput,
+          password: passwordInput,
         });
 
-        
-    </script>
+        if (error) {
+          errorBox.innerText = error.message;
+          errorBox.classList.remove("hidden");
+        } else if (data.session) {
+          window.location.href = "admin.html";
+        }
+      } catch (err) {
+        errorBox.innerText = "Connection error. Check browser console (F12).";
+        errorBox.classList.remove("hidden");
+        console.error("Login Error:", err);
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = "<span>Sign In to Dashboard</span>";
+      }
+    });
+  </script>
 </body>
 </html>
