@@ -11,56 +11,6 @@
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
   <link rel="stylesheet" href="style.css">
-  
-  <style>
-    /* Additional styles for clickable KPI cards */
-    .kpi-card {
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .kpi-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .kpi-card:active {
-      transform: scale(0.98);
-    }
-    /* Loading spinner */
-    .loading-spinner {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(255,255,255,.3);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    /* Toast notification */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      padding: 12px 24px;
-      border-radius: 12px;
-      color: white;
-      font-weight: bold;
-      font-size: 14px;
-      z-index: 9999;
-      transform: translateY(100px);
-      opacity: 0;
-      transition: all 0.3s ease;
-    }
-    .toast.show {
-      transform: translateY(0);
-      opacity: 1;
-    }
-    .toast.success { background: #10b981; }
-    .toast.error { background: #ef4444; }
-    .toast.info { background: #3b82f6; }
-  </style>
 </head>
 <body class="bg-slate-100 text-slate-800 p-4">
 
@@ -71,7 +21,7 @@
         <h1 class="text-xl font-bold flex items-center gap-2">🛠️ IAT Admin Controller</h1>
         <p class="text-xs text-rose-400 font-semibold">Real-Time Schedule Editor</p>
       </div>
-      <div class="flex gap-2 items-center flex-wrap">
+      <div class="flex gap-2 items-center">
         <button onclick="openRequestsModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition relative">
           📥 Requests Inbox
           <span id="requestBadge" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-extrabold">0</span>
@@ -82,23 +32,19 @@
       </div>
     </div>
 
-    <!-- Admin KPI Cards (Now Clickable) -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-      <div onclick="openAdminKpiModal('ALL')" class="kpi-card bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+    <!-- Admin KPI Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <p class="text-xs text-slate-500 font-bold">TOTAL EMPLOYEES</p>
         <p id="adminKpiTotal" class="text-xl font-extrabold text-slate-800">0</p>
       </div>
-      <div onclick="openAdminKpiModal('LEAVE')" class="kpi-card bg-amber-50 p-3 rounded-xl border border-amber-200 shadow-sm">
+      <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 shadow-sm">
         <p class="text-xs text-amber-600 font-bold">LEAVES SCHEDULED THIS MONTH</p>
         <p id="adminKpiLeaves" class="text-xl font-extrabold text-amber-700">0</p>
       </div>
-      <div onclick="openAdminKpiModal('HOLIDAY')" class="kpi-card bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">
+      <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">
         <p class="text-xs text-emerald-600 font-bold">HOLIDAYS SET THIS MONTH</p>
         <p id="adminKpiHolidays" class="text-xl font-extrabold text-emerald-700">0</p>
-      </div>
-      <div onclick="openAdminKpiModal('TODAY')" class="kpi-card bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-sm">
-        <p class="text-xs text-blue-600 font-bold">TODAY'S STATUS</p>
-        <p id="adminKpiToday" class="text-xl font-extrabold text-blue-700">-</p>
       </div>
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
         <p class="text-xs text-slate-500 font-bold">ACTIVE MONTH / YEAR</p>
@@ -141,7 +87,6 @@
         </select>
 
         <button onclick="applyBulkStatus()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg transition shadow">Apply to All</button>
-        <span id="bulkProgress" class="text-slate-400 text-[10px] hidden"></span>
       </div>
     </div>
 
@@ -151,7 +96,7 @@
         <span class="font-bold text-slate-500">🔍 Search:</span>
         <input type="text" id="searchInput" oninput="initAdminMatrix()" placeholder="Search employee name..." class="border p-2 rounded-lg w-60 outline-none focus:ring-2 focus:ring-rose-500">
       </div>
-      <div class="flex gap-3 items-center flex-wrap">
+      <div class="flex gap-3 items-center">
         <div>
           <span class="font-bold text-slate-500 mr-1">Team:</span>
           <select id="teamFilter" onchange="initAdminMatrix()" class="border p-2 rounded-lg font-bold outline-none">
@@ -168,9 +113,6 @@
             <option value="DESC">Z to A (DESC)</option>
           </select>
         </div>
-        <button onclick="refreshAllData()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold px-3 py-1.5 rounded-lg transition text-xs">
-          🔄 Refresh
-        </button>
       </div>
     </div>
 
@@ -187,18 +129,6 @@
     </div>
   </div>
 
-  <!-- KPI Details Modal -->
-  <div id="kpiModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
-    <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
-      <div class="flex justify-between items-center border-b pb-3">
-        <h3 id="modalTitle" class="font-bold text-slate-800 text-base">Employee Status List</h3>
-        <button onclick="closeKpiModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-      </div>
-      <div id="modalList" class="space-y-2 max-h-60 overflow-y-auto"></div>
-      <button onclick="closeKpiModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded-xl text-xs transition">Close</button>
-    </div>
-  </div>
-
   <!-- Admin Login Overlay -->
   <div id="loginModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md hidden flex items-center justify-center z-50">
     <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4">
@@ -206,7 +136,6 @@
         <h2 class="text-lg font-extrabold text-slate-800">Admin Authentication</h2>
         <p class="text-xs text-slate-500 mt-1">Authorized Managers Only</p>
       </div>
-      <div id="loginError" class="hidden bg-rose-50 border border-rose-200 text-rose-700 text-xs p-2 rounded-lg text-center"></div>
       <div class="space-y-3 text-xs">
         <div>
           <label class="font-bold text-slate-600">Admin Email</label>
@@ -214,10 +143,10 @@
         </div>
         <div>
           <label class="font-bold text-slate-600">Password</label>
-          <input type="password" id="loginPassword" placeholder="••••••••" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-rose-500" onkeydown="if(event.key==='Enter')handleLogin()">
+          <input type="password" id="loginPassword" placeholder="••••••••" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-rose-500">
         </div>
       </div>
-      <button onclick="handleLogin()" id="loginBtn" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-xl text-xs transition">Login to Dashboard</button>
+      <button onclick="handleLogin()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-xl text-xs transition">Login to Dashboard</button>
     </div>
   </div>
 
@@ -304,9 +233,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="toast"></div>
 
   <script src="admin.js"></script>
 </body>
