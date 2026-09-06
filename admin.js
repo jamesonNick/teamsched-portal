@@ -119,7 +119,7 @@ async function handleLogout() {
   window.location.href = 'login.html';
 }
 
-// ============ ADMIN MATRIX ============
+// ============ ADMIN MATRIX (FIXED) ============
 
 async function initAdminMatrix() {
   const isAuth = await checkAdminAuth();
@@ -180,7 +180,7 @@ async function initAdminMatrix() {
     return;
   }
 
-  // Build table body using filtered employees (for display only)
+  // Build table body using filtered employees
   body.innerHTML = filteredEmployees.map(emp => {
     let rowHTML = `<tr><td class="p-2 border-r font-bold text-slate-800 sticky left-0 bg-white shadow-sm">${emp.name}</td><td class="p-2 border-r text-slate-500">${emp.team}</td>`;
 
@@ -188,11 +188,19 @@ async function initAdminMatrix() {
       if (d.isWeekend) {
         rowHTML += `<td class="p-1 border-r text-center bg-slate-100"></td>`;
       } else {
+        // ============ FIX: Properly fetch status ============
         const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === d.dateStr);
         const status = sched ? sched.status : 'WFH';
+        
+        // Log para makita kung ano ang status
+        // console.log(`Employee ${emp.id}, Date ${d.dateStr}, Status: ${status}`);
+        
         rowHTML += `
           <td class="p-1 border-r text-center">
-            <select onchange="handleDropdownChange(this, ${emp.id}, '${d.dateStr}')" class="text-[9px] font-bold p-1 rounded border ${getBadgeClass(status, false)} outline-none">
+            <select onchange="handleDropdownChange(this, ${emp.id}, '${d.dateStr}')" 
+                    class="text-[9px] font-bold p-1 rounded border ${getBadgeClass(status, false)} outline-none"
+                    data-employee="${emp.id}" 
+                    data-date="${d.dateStr}">
               <option value="WFH" ${status === 'WFH' ? 'selected' : ''}>WFH</option>
               <option value="WFO" ${status === 'WFO' ? 'selected' : ''}>WFO</option>
               <option value="VL" ${status === 'VL' ? 'selected' : ''}>VL</option>
@@ -214,6 +222,8 @@ async function initAdminMatrix() {
       </td>
     </tr>`;
   }).join('');
+  
+  console.log('✅ Admin matrix rendered successfully');
 }
 
 // ============ KPI UPDATES ============
@@ -249,34 +259,72 @@ async function handleDropdownChange(selectElem, empId, date) {
   
   console.log(`🔄 Updating: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
   
-  if (!confirm(`Confirm schedule update to "${newStatus}" for date ${date}?`)) {
-    await initAdminMatrix();
-    return;
-  }
-
-  selectElem.className = `text-[9px] font-bold p-1 rounded border ${getBadgeClass(newStatus, false)} outline-none`;
-
+  // Show loading state
+  selectElem.style.opacity = '0.5';
+  selectElem.disabled = true;
+  
+  // Save the current selection
+  const currentValue = selectElem.value;
+  
   try {
-    const { error } = await db.from('schedules').upsert(
-      { employee_id: empId, date: date, status: newStatus }, 
-      { onConflict: 'employee_id,date' }
+    // ============ FIX: Direct update with upsert ============
+    const { data, error } = await db.from('schedules').upsert(
+      { 
+        employee_id: empId, 
+        date: date, 
+        status: newStatus 
+      }, 
+      { 
+        onConflict: 'employee_id,date',
+        ignoreDuplicates: false 
+      }
     );
     
     if (error) {
+      console.error('❌ Error saving:', error);
       alert('Error saving: ' + error.message);
-      await initAdminMatrix();
+      // Revert to previous value
+      selectElem.value = currentValue;
     } else {
       console.log(`✅ Updated: Employee ${empId}, Date ${date}, Status "${newStatus}"`);
       
+      // ============ FIX: Refresh data from database ============
       const { data: schedules } = await db.from('schedules').select('*');
       globalSchedules = schedules || [];
+      
+      // Update KPIs
       const monthVal = document.getElementById('adminMonthPicker').value;
       updateAdminKpis(monthVal);
       updateTodayStatus();
+      
+      // ============ FIX: Update the badge class ============
+      selectElem.className = `text-[9px] font-bold p-1 rounded border ${getBadgeClass(newStatus, false)} outline-none`;
+      
+      // Show success toast
+      showToast(`✅ Updated to "${newStatus}" for ${date}`, 'success');
+      
+      // ============ FIX: Verify the update ============
+      const { data: verify } = await db.from('schedules')
+        .select('status')
+        .eq('employee_id', empId)
+        .eq('date', date)
+        .single();
+      
+      if (verify) {
+        console.log(`🔍 Verified: Status is "${verify.status}"`);
+        if (verify.status !== newStatus) {
+          console.warn(`⚠️ Mismatch! Expected "${newStatus}" but got "${verify.status}"`);
+        }
+      }
     }
   } catch (err) {
+    console.error('❌ Error:', err);
     alert('Error: ' + err.message);
-    await initAdminMatrix();
+    selectElem.value = currentValue;
+  } finally {
+    // Re-enable
+    selectElem.style.opacity = '1';
+    selectElem.disabled = false;
   }
 }
 
@@ -524,12 +572,15 @@ async function applyBulkStatus() {
     alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
-  // Refresh everything
+  // ============ FIX: Force refresh everything ============
   globalEmployees = allEmployees;
-  await initAdminMatrix();
   
+  // Fetch latest schedules
   const { data: schedules } = await db.from('schedules').select('*');
   globalSchedules = schedules || [];
+  
+  // Re-render the table
+  await initAdminMatrix();
   updateTodayStatus();
   
   showToast(`✅ Applied "${statusVal}" to ${targetDates.length} days`, 'success');
@@ -543,6 +594,14 @@ async function applyBulkStatus() {
     if (check && check.length > 0) {
       const correctCount = check.filter(s => s.status === statusVal).length;
       console.log(`📅 ${date}: ${correctCount}/${check.length} records are "${statusVal}"`);
+      if (correctCount < check.length) {
+        console.warn(`⚠️ ${date}: ${check.length - correctCount} records have different status`);
+        const mismatches = check.filter(s => s.status !== statusVal);
+        mismatches.forEach(m => {
+          const emp = allEmployees.find(e => e.id === m.employee_id);
+          console.log(`   - ${emp?.name || 'Unknown'}: ${m.status}`);
+        });
+      }
     }
   }
 }
@@ -728,3 +787,41 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupAdminKpiClickHandlers();
   }
 });
+
+// ============ DEBUG FUNCTION ============
+// I-run ito sa console (F12) para i-verify ang status ng isang date
+
+async function checkDateStatus(date, expectedStatus) {
+  console.log(`🔍 Checking ${date}...`);
+  
+  const { data: employees } = await db.from('employees').select('id, name');
+  const { data: schedules } = await db.from('schedules')
+    .select('employee_id, status')
+    .eq('date', date);
+  
+  if (!schedules || schedules.length === 0) {
+    console.log(`❌ No records found for ${date}`);
+    return;
+  }
+  
+  const total = schedules.length;
+  const correct = schedules.filter(s => s.status === expectedStatus).length;
+  const mismatches = schedules.filter(s => s.status !== expectedStatus);
+  
+  console.log(`📊 ${date}:`);
+  console.log(`   Total: ${total}`);
+  console.log(`   ✅ Correct (${expectedStatus}): ${correct}`);
+  console.log(`   ❌ Mismatches: ${mismatches.length}`);
+  
+  if (mismatches.length > 0) {
+    console.log('   Mismatched records:');
+    mismatches.forEach(m => {
+      const emp = employees.find(e => e.id === m.employee_id);
+      console.log(`     - ${emp?.name || 'Unknown'}: ${m.status}`);
+    });
+  }
+  
+  return { total, correct, mismatches: mismatches.length };
+}
+
+// Example: checkDateStatus('2026-09-09', 'WFO');
