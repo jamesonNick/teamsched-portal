@@ -19,16 +19,23 @@ function getTodayDateStr() {
 }
 
 function getMonthDates(yearMonth) {
-  const [year, month] = yearMonth.split('-').map(Number);
+  const [yearStr, monthStr] = yearMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  
   const totalDays = new Date(year, month, 0).getDate();
 
   return Array.from({length: totalDays}, (_, i) => {
     const dayNum = (i + 1).toString().padStart(2, '0');
-    const dateStr = `${yearMonth}-${dayNum}`;
-    const dateObj = new Date(dateStr);
-    const dayOfWeek = dateObj.getDay();
+    const monthFormatted = month.toString().padStart(2, '0');
+    const dateStr = `${year}-${monthFormatted}-${dayNum}`; // Strict YYYY-MM-DD
+    
+    // Create Date Object safely via UTC parameters to avoid local timezone offset shifts
+    const dateObj = new Date(Date.UTC(year, month - 1, i + 1));
+    const dayOfWeek = dateObj.getUTCDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+    
     return { dateStr, dayNum, dayName, isWeekend };
   });
 }
@@ -109,7 +116,7 @@ async function initAdminMatrix() {
 
   let { data: employees } = await db.from('employees').select('*');
   
-  // Accurate month pattern matching
+  // Exact wildcard matching for current active month
   const { data: schedules } = await db.from('schedules')
     .select('*')
     .like('date', `${monthVal}%`);
@@ -136,7 +143,7 @@ async function initAdminMatrix() {
       if (d.isWeekend) {
         rowHTML += `<td class="p-1 border-r text-center bg-slate-100"></td>`;
       } else {
-        const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === d.dateStr);
+        const sched = globalSchedules.find(s => String(s.employee_id) === String(emp.id) && s.date === d.dateStr);
         const status = sched ? sched.status : 'WFH';
         rowHTML += `
           <td class="p-1 border-r text-center">
@@ -255,7 +262,6 @@ async function applyBulkStatus() {
       targetDates.push(d.toISOString().split('T')[0]);
     }
   } else if (mode === 'MONTH') {
-    // Strictly filter Mon-Fri for active Month Picker
     targetDates = getMonthDates(monthVal)
       .filter(d => !d.isWeekend)
       .map(d => d.dateStr);
