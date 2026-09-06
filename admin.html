@@ -1,473 +1,256 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
   <meta charset="UTF-8">
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title> IAT- Admin Control</title>
-
+  <title>IAT - Admin Control</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
-
+  <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- AUTH GUARD: Haharang agad sa URL access kung walang valid session -->
+  <script>
+    const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function checkAuth() {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (!session || error) {
+        // Kapag walang session, agad na itatapon pabalik sa login.html
+        window.location.href = "login.html";
+      }
+    }
+    checkAuth();
+  </script>
+
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
-
   <link rel="stylesheet" href="style.css">
-
 </head>
-
 <body class="bg-slate-100 text-slate-800 p-4">
 
-
-
   <div id="adminContainer" class="max-w-[98%] mx-auto space-y-4">
-
     <!-- Header -->
-
     <div class="flex justify-between items-center bg-slate-900 text-white p-4 rounded-xl shadow-md">
-
       <div>
-
         <h1 class="text-xl font-bold flex items-center gap-2">🛠️ IAT Admin Controller</h1>
-
         <p class="text-xs text-rose-400 font-semibold">Real-Time Schedule Editor</p>
-
       </div>
-
       <div class="flex gap-2 items-center">
-
         <button onclick="openRequestsModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition relative">
-
           📥 Requests Inbox
-
           <span id="requestBadge" class="hidden absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-extrabold">0</span>
-
         </button>
-
         <button onclick="addNewEmployee()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition">+ Add Employee</button>
-
         <!-- Opens User View in a NEW TAB -->
-
         <a href="index.html" target="_blank" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">👁️ View User Matrix ↗</a>
-
         <button onclick="handleLogout()" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold px-3 py-2 rounded-lg transition">Logout</button>
-
       </div>
-
     </div>
-
-
 
     <!-- Admin KPI Cards -->
-
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-
       <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-
         <p class="text-xs text-slate-500 font-bold">TOTAL EMPLOYEES</p>
-
         <p id="adminKpiTotal" class="text-xl font-extrabold text-slate-800">0</p>
-
       </div>
-
       <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 shadow-sm">
-
         <p class="text-xs text-amber-600 font-bold">LEAVES SCHEDULED THIS MONTH</p>
-
         <p id="adminKpiLeaves" class="text-xl font-extrabold text-amber-700">0</p>
-
       </div>
-
       <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">
-
         <p class="text-xs text-emerald-600 font-bold">HOLIDAYS SET THIS MONTH</p>
-
         <p id="adminKpiHolidays" class="text-xl font-extrabold text-emerald-700">0</p>
-
       </div>
-
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
-
         <p class="text-xs text-slate-500 font-bold">ACTIVE MONTH / YEAR</p>
-
         <input type="month" id="adminMonthPicker" onchange="initAdminMatrix()" class="text-xs font-bold text-slate-800 bg-transparent outline-none cursor-pointer">
-
       </div>
-
     </div>
-
-
 
     <!-- Bulk Update Bar with Full Status Options -->
-
     <div class="bg-gradient-to-r from-slate-800 to-slate-900 p-3.5 rounded-xl shadow text-white flex flex-wrap gap-3 items-center justify-between text-xs">
-
       <div class="flex items-center gap-2 flex-wrap">
-
         <span class="font-extrabold text-amber-400">⚡ BULK EDIT:</span>
-
         <label class="text-slate-300">Mode:</label>
-
         <select id="bulkMode" onchange="toggleBulkInputMode()" class="bg-slate-700 text-white border border-slate-600 p-1.5 rounded-lg outline-none font-bold">
-
           <option value="DAY">Single Day</option>
-
           <option value="WEEK">Entire Week</option>
-
           <option value="MONTH">Full Month</option>
-
         </select>
-
-
 
         <div id="bulkDayContainer" class="flex items-center gap-1">
-
           <label class="text-slate-300">Date:</label>
-
           <input type="date" id="bulkDateInput" class="bg-slate-700 text-white border border-slate-600 p-1.5 rounded-lg outline-none font-bold">
-
         </div>
-
-
 
         <div id="bulkWeekContainer" class="flex items-center gap-1 hidden">
-
           <label class="text-slate-300">Week Starting (Mon):</label>
-
           <input type="date" id="bulkWeekInput" class="bg-slate-700 text-white border border-slate-600 p-1.5 rounded-lg outline-none font-bold">
-
         </div>
-
-
 
         <label class="text-slate-300">Status:</label>
-
         <select id="bulkStatusInput" class="bg-slate-700 text-white border border-slate-600 p-1.5 rounded-lg font-bold outline-none">
-
           <option value="HOLIDAY">HOLIDAY 🥳</option>
-
           <option value="WFO">WFO 🏢</option>
-
           <option value="WFH">WFH 🏠</option>
-
           <option value="SL">SL 🏥</option>
-
           <option value="VL">VL ✈️</option>
-
           <option value="VL (AM)">VL (AM) ✈️</option>
-
           <option value="VL (PM)">VL (PM) ✈️</option>
-
           <option value="SL (AM)">SL (AM) 🏥</option>
-
           <option value="SL (PM)">SL (PM) 🏥</option>
-
         </select>
-
-
 
         <button onclick="applyBulkStatus()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg transition shadow">Apply to All</button>
-
       </div>
-
     </div>
-
-
 
     <!-- Search, Filter & Sort Controls -->
-
     <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center justify-between text-xs">
-
       <div class="flex gap-2 items-center w-full md:w-auto">
-
         <span class="font-bold text-slate-500">🔍 Search:</span>
-
         <input type="text" id="searchInput" oninput="initAdminMatrix()" placeholder="Search employee name..." class="border p-2 rounded-lg w-60 outline-none focus:ring-2 focus:ring-rose-500">
-
       </div>
-
       <div class="flex gap-3 items-center">
-
         <div>
-
           <span class="font-bold text-slate-500 mr-1">Team:</span>
-
           <select id="teamFilter" onchange="initAdminMatrix()" class="border p-2 rounded-lg font-bold outline-none">
-
             <option value="ALL">All Teams</option>
-
             <option value="EAST ASIA">EAST ASIA</option>
-
             <option value="JP + BB + IFF + OC">JP + BB + IFF + OC</option>
-
             <option value="WEST ASIA">WEST ASIA</option>
-
           </select>
-
         </div>
-
         <div>
-
           <span class="font-bold text-slate-500 mr-1">Sort Name:</span>
-
           <select id="sortOrder" onchange="initAdminMatrix()" class="border p-2 rounded-lg font-bold outline-none">
-
             <option value="ASC">A to Z (ASC)</option>
-
             <option value="DESC">Z to A (DESC)</option>
-
           </select>
-
         </div>
-
       </div>
-
     </div>
-
-
 
     <!-- Admin Matrix Table -->
-
     <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
-
       <div class="overflow-x-auto max-h-[70vh]">
-
         <table class="w-full text-xs text-left border-collapse">
-
           <thead id="adminMatrixHead" class="bg-slate-800 text-white sticky top-0 z-10"></thead>
-
           <tbody id="adminMatrixBody" class="divide-y divide-slate-200">
-
             <tr><td colspan="35" class="p-4 text-center text-slate-400">Loading Editor...</td></tr>
-
           </tbody>
-
         </table>
-
       </div>
-
     </div>
-
   </div>
-
-
 
   <!-- Admin Login Overlay -->
-
   <div id="loginModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md hidden flex items-center justify-center z-50">
-
     <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4">
-
       <div class="text-center">
-
         <h2 class="text-lg font-extrabold text-slate-800">Admin Authentication</h2>
-
         <p class="text-xs text-slate-500 mt-1">Authorized Managers Only</p>
-
       </div>
-
       <div class="space-y-3 text-xs">
-
         <div>
-
           <label class="font-bold text-slate-600">Admin Email</label>
-
           <input type="email" id="loginEmail" placeholder="admin@company.com" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-rose-500">
-
         </div>
-
         <div>
-
           <label class="font-bold text-slate-600">Password</label>
-
           <input type="password" id="loginPassword" placeholder="••••••••" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-rose-500">
-
         </div>
-
       </div>
-
       <button onclick="handleLogin()" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-xl text-xs transition">Login to Dashboard</button>
-
     </div>
-
   </div>
-
-
 
   <!-- Requests Inbox Modal for Admin -->
-
   <div id="requestsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
-
     <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
-
       <div class="flex justify-between items-center border-b pb-3">
-
         <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">📥 Submitted Leave & Skeletal Requests</h3>
-
         <button onclick="closeRequestsModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-
       </div>
-
       <div class="overflow-y-auto max-h-80">
-
         <table class="w-full text-xs text-left border-collapse">
-
           <thead class="bg-slate-100 text-slate-600 font-bold uppercase border-b">
-
             <tr>
-
               <th class="p-2">Employee</th>
-
               <th class="p-2">Date</th>
-
               <th class="p-2">Type</th>
-
               <th class="p-2">Message</th>
-
               <th class="p-2 text-center">Action</th>
-
             </tr>
-
           </thead>
-
           <tbody id="requestsList" class="divide-y">
-
             <tr><td colspan="5" class="p-3 text-center text-slate-400">Loading requests...</td></tr>
-
           </tbody>
-
         </table>
-
       </div>
-
       <div class="flex gap-2">
-
         <button onclick="clearAllRequests()" class="w-1/2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold py-2 rounded-xl text-xs transition border border-rose-200">🗑️ Clear All Requests</button>
-
         <button onclick="closeRequestsModal()" class="w-1/2 bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs">Close</button>
-
       </div>
-
     </div>
-
   </div>
-
-
 
   <!-- Add Employee Modal -->
-
   <div id="addEmpModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
-
     <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4">
-
       <h3 class="font-bold text-slate-800 text-base">Add New Employee</h3>
-
       <div class="space-y-3 text-xs">
-
         <div>
-
           <label class="font-bold text-slate-600">Employee Full Name</label>
-
           <input type="text" id="addEmpName" placeholder="e.g. Dela Cruz, Juan" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-emerald-500">
-
         </div>
-
         <div>
-
           <label class="font-bold text-slate-600">Select Team</label>
-
           <select id="addEmpTeam" class="w-full border p-2 rounded-lg mt-1 font-bold outline-none">
-
             <option value="EAST ASIA">EAST ASIA</option>
-
             <option value="JP + BB + IFF + OC">JP + BB + IFF + OC</option>
-
             <option value="WEST ASIA">WEST ASIA</option>
-
           </select>
-
         </div>
-
       </div>
-
       <div class="flex gap-2">
-
         <button onclick="closeAddEmpModal()" class="w-1/2 bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs">Cancel</button>
-
         <button onclick="submitNewEmployee()" class="w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition">Save Employee</button>
-
       </div>
-
     </div>
-
   </div>
-
-
 
   <!-- Edit Employee Modal -->
-
-<div id="editEmpModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
-
-  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
-
-    <div class="flex justify-between items-center border-b pb-3">
-
-      <h3 class="font-bold text-slate-800 text-base">✏️ Edit Employee Details</h3>
-
-      <button onclick="closeEditEmpModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-
-    </div>
-
-    <input type="hidden" id="editEmpId">
-
-    <div class="space-y-3 text-xs">
-
-      <div>
-
-        <label class="font-bold text-slate-600">Employee Name</label>
-
-        <input type="text" id="editEmpName" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-indigo-500">
-
+  <div id="editEmpModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-800 text-base">✏️ Edit Employee Details</h3>
+        <button onclick="closeEditEmpModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
       </div>
-
-      <div>
-
-        <label class="font-bold text-slate-600">Team / Department</label>
-
-        <select id="editEmpTeam" class="w-full border p-2 rounded-lg mt-1 font-bold outline-none">
-
-          <option value="EAST ASIA">EAST ASIA</option>
-
-          <option value="JP + BB + IFF + OC">JP + BB + IFF + OC</option>
-
-          <option value="WEST ASIA">WEST ASIA</option>
-
-        </select>
-
+      <input type="hidden" id="editEmpId">
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="font-bold text-slate-600">Employee Name</label>
+          <input type="text" id="editEmpName" class="w-full border p-2 rounded-lg mt-1 outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="font-bold text-slate-600">Team / Department</label>
+          <select id="editEmpTeam" class="w-full border p-2 rounded-lg mt-1 font-bold outline-none">
+            <option value="EAST ASIA">EAST ASIA</option>
+            <option value="JP + BB + IFF + OC">JP + BB + IFF + OC</option>
+            <option value="WEST ASIA">WEST ASIA</option>
+          </select>
+        </div>
       </div>
-
+      <div class="flex gap-2">
+        <button onclick="closeEditEmpModal()" class="w-1/2 bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs">Cancel</button>
+        <button onclick="submitEditEmployee()" class="w-1/2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition">Save Changes</button>
+      </div>
     </div>
-
-    <div class="flex gap-2">
-
-      <button onclick="closeEditEmpModal()" class="w-1/2 bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs">Cancel</button>
-
-      <button onclick="submitEditEmployee()" class="w-1/2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition">Save Changes</button>
-
-    </div>
-
   </div>
 
-</div>
-
-
-
   <script src="admin.js"></script>
-
 </body>
-
 </html>
