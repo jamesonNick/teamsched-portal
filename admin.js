@@ -46,7 +46,7 @@ async function checkAdminAuth() {
   const { data: { session } } = await db.auth.getSession();
   
   if (!session) {
-    document.getElementById('loginModal').classList.remove('hidden');
+    document.getElementById('loginModal')?.classList.remove('hidden');
     return false;
   }
 
@@ -58,7 +58,7 @@ async function checkAdminAuth() {
     return false;
   }
 
-  document.getElementById('loginModal').classList.add('hidden');
+  document.getElementById('loginModal')?.classList.add('hidden');
   return true;
 }
 
@@ -80,7 +80,7 @@ async function handleLogin() {
 
 async function handleLogout() {
   await db.auth.signOut();
-  window.location.href = 'index.html';
+  window.location.href = 'login.html';
 }
 
 async function initAdminMatrix() {
@@ -159,10 +159,72 @@ async function initAdminMatrix() {
 }
 
 function updateAdminKpis(selectedMonth) {
+  const todayStr = getTodayDateStr();
+
+  // 1. Total Employees
+  const totalElem = document.getElementById('adminKpiTotal');
+  if (totalElem) totalElem.innerText = globalEmployees.length;
+
+  // 2. Today WFO and WFH Count
+  const todayScheds = globalSchedules.filter(s => s.date === todayStr);
+  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
+  
+  const wfoElem = document.getElementById('adminKpiWfo');
+  const wfhElem = document.getElementById('adminKpiWfh');
+  if (wfoElem) wfoElem.innerText = wfoCount;
+  if (wfhElem) wfhElem.innerText = Math.max(0, globalEmployees.length - wfoCount);
+
+  // 3. Leaves & Holidays
   const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
-  document.getElementById('adminKpiTotal').innerText = globalEmployees.length;
-  document.getElementById('adminKpiLeaves').innerText = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
-  document.getElementById('adminKpiHolidays').innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
+  const leavesElem = document.getElementById('adminKpiLeaves');
+  const holidaysElem = document.getElementById('adminKpiHolidays');
+  
+  if (leavesElem) leavesElem.innerText = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
+  if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
+}
+
+function openKpiModal(type) {
+  const modal = document.getElementById('kpiModal');
+  const title = document.getElementById('modalTitle');
+  const list = document.getElementById('modalList');
+  const todayStr = getTodayDateStr();
+
+  if (!modal || !title || !list) return;
+
+  modal.classList.remove('hidden');
+  list.innerHTML = '';
+
+  let filtered = [];
+  if (type === 'ALL') {
+    title.innerText = 'All Employees';
+    filtered = globalEmployees.map(e => ({ name: e.name, team: e.team, status: 'Active' }));
+  } else {
+    title.innerText = `Today (${todayStr}) - ${type} List`;
+    globalEmployees.forEach(emp => {
+      const sched = globalSchedules.find(s => s.employee_id === emp.id && s.date === todayStr);
+      const status = sched ? sched.status : 'WFH';
+
+      if (type === 'WFO' && status === 'WFO') filtered.push({ name: emp.name, team: emp.team, status });
+      else if (type === 'WFH' && status === 'WFH') filtered.push({ name: emp.name, team: emp.team, status });
+      else if (type === 'LEAVE' && (status?.startsWith('VL') || status?.startsWith('SL'))) filtered.push({ name: emp.name, team: emp.team, status });
+      else if (type === 'HOLIDAY' && status === 'HOLIDAY') filtered.push({ name: emp.name, team: emp.team, status });
+    });
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No employees found for this status today.</p>`;
+  } else {
+    list.innerHTML = filtered.map(item => `
+      <div class="flex justify-between items-center p-2.5 bg-slate-50 rounded-lg border text-xs">
+        <div><p class="font-bold text-slate-800">${item.name}</p><p class="text-[10px] text-slate-400">${item.team}</p></div>
+        <span class="px-2 py-0.5 rounded font-bold ${getBadgeClass(item.status, false)}">${item.status}</span>
+      </div>
+    `).join('');
+  }
+}
+
+function closeKpiModal() {
+  document.getElementById('kpiModal')?.classList.add('hidden');
 }
 
 async function handleDropdownChange(selectElem, empId, date) {
@@ -187,7 +249,6 @@ async function handleDropdownChange(selectElem, empId, date) {
   }
 }
 
-// Edit Employee Modal Logic
 function openEditEmpModal(id, name, team) {
   document.getElementById('editEmpId').value = id;
   document.getElementById('editEmpName').value = name;
@@ -245,8 +306,15 @@ async function applyBulkStatus() {
     targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
   }
 
-  if (!confirm(`Apply "${statusVal}" to ALL employees across ${targetDates.length} date(s)?`)) return;
+  // 1. Re-fetch latest employees (para ma-sama pati ang mga bagong idinagdag na empleyado)
+  const { data: latestEmployees } = await db.from('employees').select('*');
+  if (latestEmployees && latestEmployees.length > 0) {
+    globalEmployees = latestEmployees;
+  }
 
+  if (!confirm(`Apply "${statusVal}" to ALL ${globalEmployees.length} employee(s) across ${targetDates.length} date(s)?`)) return;
+
+  // 2. Prepare records batch payload
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
@@ -254,13 +322,24 @@ async function applyBulkStatus() {
     });
   });
 
-  const { error } = await db.from('schedules').upsert(records, { onConflict: 'employee_id,date' });
+  // 3. Save by Batch (Tig-300 rows para hindi mag-timeout/cut-off sa Supabase API limits)
+  const BATCH_SIZE = 300;
+  let hasError = false;
 
-  if (error) {
-    alert('Bulk apply error: ' + error.message);
-  } else {
-    alert(`Applied ${statusVal} to all records successfully.`);
-    initAdminMatrix();
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const chunk = records.slice(i, i + BATCH_SIZE);
+    const { error } = await db.from('schedules').upsert(chunk, { onConflict: 'employee_id,date' });
+    if (error) {
+      console.error('Batch error:', error);
+      hasError = true;
+      alert('Bulk apply error on batch: ' + error.message);
+      break;
+    }
+  }
+
+  if (!hasError) {
+    alert(`Applied ${statusVal} to ALL employees successfully!`);
+    await initAdminMatrix();
   }
 }
 
@@ -373,7 +452,3 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
-async function handleLogout() {
-  await supabase.auth.signOut();
-  window.location.href = "login.html";
-}
