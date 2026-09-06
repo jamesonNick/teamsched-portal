@@ -94,26 +94,34 @@ async function initUserMatrix() {
 function updateUserKpis(selectedMonth) {
   const todayStr = getTodayDateStr();
 
-  document.getElementById('kpiTotal').innerText = globalEmployees.length;
+  // 1. Total Employees
+  const totalEmpElem = document.getElementById('kpiTotal') || document.getElementById('userKpiTotal');
+  if (totalEmpElem) totalEmpElem.innerText = globalEmployees.length;
 
-  const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
+  // 2. Today's WFO & WFH
   const todayScheds = globalSchedules.filter(s => s.date === todayStr);
+  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
+  
+  const wfoElem = document.getElementById('kpiWfo') || document.getElementById('userKpiWfo');
+  const wfhElem = document.getElementById('kpiWfh') || document.getElementById('userKpiWfh');
+  if (wfoElem) wfoElem.innerText = wfoCount;
+  if (wfhElem) wfhElem.innerText = Math.max(0, globalEmployees.length - wfoCount);
 
-  let wfoCount = 0;
-  let leaveCount = 0;
+  // 3. Monthly Leaves Count (VL, SL, VL AM/PM, SL AM/PM)
+  const monthScheds = globalSchedules.filter(s => s.date.startsWith(selectedMonth));
+  const leaveCount = monthScheds.filter(s => {
+    const st = s.status || '';
+    return st.startsWith('VL') || st.startsWith('SL');
+  }).length;
 
-  globalEmployees.forEach(emp => {
-    const sched = todayScheds.find(s => s.employee_id === emp.id);
-    const status = sched ? sched.status : 'WFH';
+  const leaveElem = document.getElementById('kpiLeave') || document.getElementById('userKpiLeaves');
+  if (leaveElem) leaveElem.innerText = leaveCount;
 
-    if (status === 'WFO') wfoCount++;
-    if (status?.startsWith('VL') || status?.startsWith('SL')) leaveCount++;
-  });
-
-  document.getElementById('kpiWfo').innerText = wfoCount;
-  document.getElementById('kpiLeave').innerText = leaveCount;
-  document.getElementById('kpiWfh').innerText = Math.max(0, globalEmployees.length - (wfoCount + leaveCount));
-  document.getElementById('kpiHoliday').innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
+  // 4. Monthly Holidays Count
+  const holidayElem = document.getElementById('kpiHoliday') || document.getElementById('userKpiHolidays');
+  if (holidayElem) {
+    holidayElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
+  }
 }
 
 function openKpiModal(type) {
