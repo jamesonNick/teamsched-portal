@@ -144,7 +144,7 @@ async function initAdminMatrix() {
   });
   head.innerHTML = headHTML + `<th class="p-2 text-center bg-slate-900 sticky right-0 z-20 min-w-[80px]">ACTION</th></tr>`;
 
-  // Fetch data
+  // Fetch ALL employees from database
   const { data: employees, error: empError } = await db.from('employees').select('*');
   const { data: schedules, error: schedError } = await db.from('schedules').select('*');
 
@@ -159,13 +159,14 @@ async function initAdminMatrix() {
     return;
   }
 
+  // Store ALL employees in global
   globalEmployees = employees;
   globalSchedules = schedules || [];
 
   updateAdminKpis(monthVal);
-  updateTodayStatus(); // <-- ADDED: Update today's status KPI
+  updateTodayStatus();
 
-  // Filter employees
+  // Apply filters ONLY for display
   let filteredEmployees = employees.filter(emp => {
     const matchesSearch = emp.name.toLowerCase().includes(searchVal);
     const matchesTeam = teamVal === 'ALL' || emp.team === teamVal;
@@ -179,6 +180,7 @@ async function initAdminMatrix() {
     return;
   }
 
+  // Build table body using filtered employees (for display only)
   body.innerHTML = filteredEmployees.map(emp => {
     let rowHTML = `<tr><td class="p-2 border-r font-bold text-slate-800 sticky left-0 bg-white shadow-sm">${emp.name}</td><td class="p-2 border-r text-slate-500">${emp.team}</td>`;
 
@@ -227,8 +229,6 @@ function updateAdminKpis(selectedMonth) {
   if (holidaysElem) holidaysElem.innerText = new Set(monthScheds.filter(s => s.status === 'HOLIDAY').map(s => s.date)).size;
 }
 
-// ============ TODAY'S STATUS KPI ============
-
 function updateTodayStatus() {
   const today = getTodayDateStr();
   const todayScheds = globalSchedules.filter(s => s.date === today);
@@ -268,7 +268,7 @@ async function handleDropdownChange(selectElem, empId, date) {
       globalSchedules = schedules || [];
       const monthVal = document.getElementById('adminMonthPicker').value;
       updateAdminKpis(monthVal);
-      updateTodayStatus(); // <-- ADDED: Update today's status after change
+      updateTodayStatus();
     }
   } catch (err) {
     alert('Error: ' + err.message);
@@ -412,7 +412,6 @@ function toggleBulkInputMode() {
   } else if (mode === 'WEEK' && weekContainer) {
     weekContainer.classList.remove('hidden');
   }
-  // MONTH mode - hide both
 }
 
 async function applyBulkStatus() {
@@ -429,59 +428,57 @@ async function applyBulkStatus() {
   } else if (mode === 'WEEK') {
     const weekStart = document.getElementById('bulkWeekInput').value;
     if (!weekStart) return alert('Select Monday start date.');
-    // Get Monday to Friday (5 working days)
     for (let i = 0; i < 5; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split('T')[0];
-      // Check if it's a weekday (not Saturday or Sunday)
       const dayOfWeek = d.getDay();
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         targetDates.push(dateStr);
       }
     }
-    
     if (targetDates.length === 0) {
       alert('No weekdays found in the selected week.');
       return;
     }
   } else if (mode === 'MONTH') {
-    // Get all weekdays in the month
     const allDates = getMonthDates(monthVal);
     targetDates = allDates.filter(d => !d.isWeekend).map(d => d.dateStr);
-    
     if (targetDates.length === 0) {
       alert('No weekdays found in this month.');
       return;
     }
   }
 
-  // IMPORTANT: Fetch LATEST employees (including newly added ones)
-  const { data: latestEmployees, error: empError } = await db.from('employees').select('*');
+  // ============ IMPORTANT FIX ============
+  // Directly fetch ALL employees from database (no filters!)
+  const { data: allEmployees, error: empError } = await db
+    .from('employees')
+    .select('*')
+    .order('name', { ascending: true });
   
   if (empError) {
     alert('Error fetching employees: ' + empError.message);
     return;
   }
 
-  if (!latestEmployees || latestEmployees.length === 0) {
+  if (!allEmployees || allEmployees.length === 0) {
     alert('No employees found in the database.');
     return;
   }
 
-  // Update global employees
-  globalEmployees = latestEmployees;
-
-  // Count total records to update
-  const totalRecords = globalEmployees.length * targetDates.length;
+  // Use ALL employees, not just the filtered ones
+  const employeesToUpdate = allEmployees;
   
-  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${globalEmployees.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
+  const totalRecords = employeesToUpdate.length * targetDates.length;
+  
+  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
     return;
   }
 
   // Prepare all records
   let records = [];
-  globalEmployees.forEach(emp => {
+  employeesToUpdate.forEach(emp => {
     targetDates.forEach(date => {
       records.push({ 
         employee_id: emp.id, 
@@ -491,8 +488,8 @@ async function applyBulkStatus() {
     });
   });
 
-  // Process in chunks to avoid timeout
-  const chunkSize = 100; // Smaller chunks for better reliability
+  // Process in chunks
+  const chunkSize = 100;
   let errors = [];
   let updated = 0;
 
@@ -519,11 +516,19 @@ async function applyBulkStatus() {
   if (errors.length > 0) {
     alert(`⚠️ Bulk update completed with ${errors.length} error(s):\n\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n\n...and ${errors.length - 3} more errors` : ''}`);
   } else {
-    alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${globalEmployees.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
+    alert(`✅ Successfully applied "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${updated} total record(s)`);
   }
 
-  // Refresh everything
-  await refreshAllData();
+  // Update globalEmployees with ALL employees
+  globalEmployees = allEmployees;
+  
+  // Refresh the table
+  await initAdminMatrix();
+  
+  // Also update today's status
+  const { data: schedules } = await db.from('schedules').select('*');
+  globalSchedules = schedules || [];
+  updateTodayStatus();
 }
 
 // ============ REFRESH DATA ============
@@ -676,7 +681,6 @@ async function deleteEmployee(id) {
 // ============ KPI CLICK HANDLERS ============
 
 function setupAdminKpiClickHandlers() {
-  // Get all KPI cards with onclick attribute
   const kpiCards = document.querySelectorAll('[onclick^="openAdminKpiModal"]');
   kpiCards.forEach(card => {
     card.style.cursor = 'pointer';
