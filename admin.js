@@ -581,3 +581,137 @@ window.addEventListener('DOMContentLoaded', async () => {
     setupAdminKpiClickHandlers();
   }
 });
+
+// Add this to admin.js
+
+// Toast notification
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// Today's status KPI
+function updateTodayStatus() {
+  const today = getTodayDateStr();
+  const todayScheds = globalSchedules.filter(s => s.date === today);
+  const wfoCount = todayScheds.filter(s => s.status === 'WFO').length;
+  const wfhCount = todayScheds.filter(s => s.status === 'WFH').length;
+  const leaveCount = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).length;
+  
+  const elem = document.getElementById('adminKpiToday');
+  if (elem) {
+    elem.innerText = `🏢${wfoCount} 🏠${wfhCount} ✈️${leaveCount}`;
+  }
+}
+
+// Enhanced openAdminKpiModal
+function openAdminKpiModal(type) {
+  const modal = document.getElementById('kpiModal');
+  const title = document.getElementById('modalTitle');
+  const list = document.getElementById('modalList');
+
+  if (!modal || !title || !list) return;
+
+  const today = getTodayDateStr();
+  const todayScheds = globalSchedules.filter(s => s.date === today);
+  let employees = [];
+
+  if (type === 'ALL') {
+    title.innerText = '👥 All Employees';
+    employees = globalEmployees;
+  } else if (type === 'LEAVE') {
+    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
+    const monthScheds = globalSchedules.filter(s => s.date.startsWith(monthVal));
+    const empIds = monthScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
+    const uniqueIds = [...new Set(empIds)];
+    employees = globalEmployees.filter(e => uniqueIds.includes(e.id));
+    title.innerText = '✈️ Employees on Leave This Month';
+  } else if (type === 'HOLIDAY') {
+    title.innerText = '🥳 Holidays This Month';
+    const monthVal = document.getElementById('adminMonthPicker')?.value || getCurrentYearMonth();
+    const holidayDates = globalSchedules
+      .filter(s => s.status === 'HOLIDAY' && s.date.startsWith(monthVal))
+      .map(s => s.date);
+    const uniqueDates = [...new Set(holidayDates)];
+    list.innerHTML = uniqueDates.length > 0 
+      ? uniqueDates.map(d => `<div class="p-2 bg-emerald-50 rounded-lg text-center font-bold text-emerald-700">${d}</div>`).join('')
+      : '<div class="p-2 text-center text-slate-400">No holidays this month</div>';
+    modal.classList.remove('hidden');
+    return;
+  } else if (type === 'TODAY') {
+    title.innerText = '📊 Today\'s Status Summary';
+    const wfoEmp = todayScheds.filter(s => s.status === 'WFO').map(s => s.employee_id);
+    const wfhEmp = todayScheds.filter(s => s.status === 'WFH').map(s => s.employee_id);
+    const leaveEmp = todayScheds.filter(s => s.status?.startsWith('VL') || s.status?.startsWith('SL')).map(s => s.employee_id);
+    
+    let html = '';
+    if (wfoEmp.length > 0) {
+      html += `<div class="font-bold text-red-600 mt-2">🏢 WFO (${wfoEmp.length}):</div>`;
+      html += globalEmployees.filter(e => wfoEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-red-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (wfhEmp.length > 0) {
+      html += `<div class="font-bold text-blue-600 mt-2">🏠 WFH (${wfhEmp.length}):</div>`;
+      html += globalEmployees.filter(e => wfhEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-blue-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (leaveEmp.length > 0) {
+      html += `<div class="font-bold text-amber-600 mt-2">✈️ On Leave (${leaveEmp.length}):</div>`;
+      html += globalEmployees.filter(e => leaveEmp.includes(e.id)).map(e => 
+        `<div class="p-1.5 bg-amber-50 rounded-lg text-xs">${e.name}</div>`
+      ).join('');
+    }
+    if (!html) html = '<div class="p-2 text-center text-slate-400">No data for today</div>';
+    list.innerHTML = html;
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  if (employees.length === 0) {
+    list.innerHTML = '<div class="p-2 text-center text-slate-400">No employees found</div>';
+  } else {
+    list.innerHTML = employees.map(e => 
+      `<div class="p-2 bg-slate-50 rounded-lg flex justify-between items-center">
+        <span class="font-bold text-slate-800">${e.name}</span>
+        <span class="text-xs text-slate-500">${e.team}</span>
+      </div>`
+    ).join('');
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeKpiModal() {
+  document.getElementById('kpiModal').classList.add('hidden');
+}
+
+// Enhanced refreshAllData
+async function refreshAllData() {
+  const btn = event?.target;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Refreshing...';
+  }
+  
+  try {
+    await initAdminMatrix();
+    await loadRequests();
+    showToast('Data refreshed successfully!', 'success');
+  } catch (err) {
+    showToast('Error refreshing data: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Refresh';
+    }
+  }
+}
+
+// Update initAdminMatrix to call updateTodayStatus
+// Add this line at the end of initAdminMatrix function:
+// updateTodayStatus();
