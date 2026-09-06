@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Login - Supabase</title>
+    <!-- Include Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+        <input type="email" id="email" placeholder="Email ng Manager" required><br><br>
+        <input type="password" id="password" placeholder="Password" required><br><br>
+        <button type="submit">Log In</button>
+    </form>
+    <p id="errorMsg" style="color: red; display: none;"></p>
+
+    <script>
+        // 1. I-initialize ang Supabase (Palitan ng sarili mong Credentials)
+        const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+        const SUPABASE_ANON_KEY = 'YOUR-ANON-KEY';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // 2. Kapag naka-login na pala ang session, dumeretso agad sa admin.html
+        async function checkExistingSession() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                window.location.href = "admin.html";
+            }
+        }
+        checkExistingSession();
+
+        // 3. Login Event
+        document.getElementById("loginForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            // Ipadala sa Supabase Auth para i-verify
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email,
+                password: password,
+            });
+
+            if (error) {
+                document.getElementById("errorMsg").innerText = error.message;
+                document.getElementById("errorMsg").style.display = "block";
+            } else {
+                // Awtomatikong nagse-save ng secure session ang Supabase!
+                window.location.href = "admin.html";
+            }
+        });
+    </script>
+</body>
+</html>
