@@ -428,20 +428,19 @@ async function applyBulkStatus() {
   } else if (mode === 'WEEK') {
     const weekStart = document.getElementById('bulkWeekInput').value;
     if (!weekStart) return alert('Select Monday start date.');
+    // WEEKDAYS ONLY: Mon-Fri (5 days) - EXCLUDING Saturday and Sunday
     for (let i = 0; i < 5; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split('T')[0];
-      const dayOfWeek = d.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        targetDates.push(dateStr);
-      }
+      targetDates.push(dateStr);
     }
     if (targetDates.length === 0) {
       alert('No weekdays found in the selected week.');
       return;
     }
   } else if (mode === 'MONTH') {
+    // WEEKDAYS ONLY: Exclude weekends (Saturday and Sunday)
     const allDates = getMonthDates(monthVal);
     targetDates = allDates.filter(d => !d.isWeekend).map(d => d.dateStr);
     if (targetDates.length === 0) {
@@ -450,7 +449,6 @@ async function applyBulkStatus() {
     }
   }
 
-  // ============ IMPORTANT FIX ============
   // Directly fetch ALL employees from database (no filters!)
   const { data: allEmployees, error: empError } = await db
     .from('employees')
@@ -472,7 +470,11 @@ async function applyBulkStatus() {
   
   const totalRecords = employeesToUpdate.length * targetDates.length;
   
-  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s)\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
+  const dayType = mode === 'WEEK' ? '5 days (Mon-Fri)' : 
+                  mode === 'MONTH' ? 'weekdays only' : 
+                  '1 day';
+  
+  if (!confirm(`⚠️ Apply "${statusVal}" to:\n\n📊 ${employeesToUpdate.length} employee(s)\n📅 ${targetDates.length} date(s) (${dayType})\n📝 ${totalRecords} total record(s)\n\nContinue?`)) {
     return;
   }
 
@@ -529,6 +531,8 @@ async function applyBulkStatus() {
   const { data: schedules } = await db.from('schedules').select('*');
   globalSchedules = schedules || [];
   updateTodayStatus();
+  
+  showToast('✅ Bulk update completed successfully!', 'success');
 }
 
 // ============ REFRESH DATA ============
