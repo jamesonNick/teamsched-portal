@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IAT- Admin Control</title>
+  <title>IAT - Admin Control</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
@@ -29,7 +29,7 @@
       </div>
     </div>
 
-    <!-- Admin KPI Cards (Now Clickable) -->
+    <!-- Admin KPI Cards (Interactive/Clickable) -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
       <div onclick="openAdminKpiModal('ALL')" class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition cursor-pointer">
         <p class="text-xs text-slate-500 font-bold">TOTAL EMPLOYEES</p>
@@ -59,7 +59,7 @@
       <input type="month" id="adminMonthPicker" onchange="initAdminMatrix()" class="text-xs font-bold text-slate-800 border p-1.5 rounded-lg outline-none cursor-pointer">
     </div>
 
-    <!-- Bulk Update Bar -->
+    <!-- Bulk Edit Bar -->
     <div class="bg-gradient-to-r from-slate-800 to-slate-900 p-3.5 rounded-xl shadow text-white flex flex-wrap gap-3 items-center justify-between text-xs">
       <div class="flex items-center gap-2 flex-wrap">
         <span class="font-extrabold text-amber-400">⚡ BULK EDIT:</span>
@@ -97,7 +97,7 @@
       </div>
     </div>
 
-    <!-- Search, Filter & Sort Controls -->
+    <!-- Search & Filters -->
     <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-center justify-between text-xs">
       <div class="flex gap-2 items-center w-full md:w-auto">
         <span class="font-bold text-slate-500">🔍 Search:</span>
@@ -123,7 +123,7 @@
       </div>
     </div>
 
-    <!-- Admin Matrix Table -->
+    <!-- Admin Table -->
     <div class="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
       <div class="overflow-x-auto max-h-[70vh]">
         <table class="w-full text-xs text-left border-collapse">
@@ -132,20 +132,6 @@
             <tr><td colspan="35" class="p-4 text-center text-slate-400">Loading Editor...</td></tr>
           </tbody>
         </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Admin KPI Modal -->
-  <div id="kpiModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-xl shadow-2xl p-5 w-full max-w-md border border-slate-200">
-      <div class="flex justify-between items-center mb-4 pb-2 border-b">
-        <h3 id="modalTitle" class="text-sm font-extrabold text-slate-800">Employee List</h3>
-        <button onclick="closeAdminKpiModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-      </div>
-      <div id="modalList" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
-      <div class="mt-4 pt-2 border-t text-right">
-        <button onclick="closeAdminKpiModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-1.5 rounded-lg text-xs">Close</button>
       </div>
     </div>
   </div>
@@ -171,7 +157,21 @@
     </div>
   </div>
 
-  <!-- Requests Inbox Modal for Admin -->
+  <!-- KPI List Modal -->
+  <div id="kpiModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-xl shadow-2xl p-5 w-full max-w-md border border-slate-200">
+      <div class="flex justify-between items-center mb-4 pb-2 border-b">
+        <h3 id="modalTitle" class="text-sm font-extrabold text-slate-800">Employee List</h3>
+        <button onclick="closeAdminKpiModal()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+      </div>
+      <div id="modalList" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+      <div class="mt-4 pt-2 border-t text-right">
+        <button onclick="closeAdminKpiModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-1.5 rounded-lg text-xs">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests Inbox Modal -->
   <div id="requestsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
     <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
