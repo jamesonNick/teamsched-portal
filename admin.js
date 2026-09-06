@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://kheaochbnwfkmjwnyjpf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvYhibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoZWFvY2hibndma21qd255anBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDIxNjAsImV4cCI6MjEwNDE3ODE2MH0.4DdYobqvoWR8cBpe_bC160-kSTEAI2lSlyh4h8kHtq8';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let globalEmployees = [];
@@ -109,11 +109,10 @@ async function initAdminMatrix() {
 
   let { data: employees } = await db.from('employees').select('*');
   
-  // FIXED QUERY: Kunin lahat ng schedules para sa eksaktong buwan na nasa Month Picker
+  // Accurate month pattern matching
   const { data: schedules } = await db.from('schedules')
     .select('*')
-    .gte('date', `${monthVal}-01`)
-    .lte('date', `${monthVal}-31`);
+    .like('date', `${monthVal}%`);
 
   if (!employees) return;
 
@@ -194,8 +193,7 @@ async function handleDropdownChange(selectElem, empId, date) {
     const monthVal = document.getElementById('adminMonthPicker').value;
     const { data: schedules } = await db.from('schedules')
       .select('*')
-      .gte('date', `${monthVal}-01`)
-      .lte('date', `${monthVal}-31`);
+      .like('date', `${monthVal}%`);
       
     globalSchedules = schedules || [];
     updateAdminKpis(monthVal);
@@ -257,7 +255,10 @@ async function applyBulkStatus() {
       targetDates.push(d.toISOString().split('T')[0]);
     }
   } else if (mode === 'MONTH') {
-    targetDates = getMonthDates(monthVal).filter(d => !d.isWeekend).map(d => d.dateStr);
+    // Strictly filter Mon-Fri for active Month Picker
+    targetDates = getMonthDates(monthVal)
+      .filter(d => !d.isWeekend)
+      .map(d => d.dateStr);
   }
 
   const { data: latestEmployees } = await db.from('employees').select('*');
@@ -270,7 +271,7 @@ async function applyBulkStatus() {
   let records = [];
   globalEmployees.forEach(emp => {
     targetDates.forEach(date => {
-      records.push({ employee_id: emp.id, date, status: statusVal });
+      records.push({ employee_id: emp.id, date: date, status: statusVal });
     });
   });
 
@@ -290,6 +291,12 @@ async function applyBulkStatus() {
 
   if (!hasError) {
     alert(`Applied ${statusVal} to ALL employees successfully!`);
+    
+    const { data: schedules } = await db.from('schedules')
+      .select('*')
+      .like('date', `${monthVal}%`);
+      
+    globalSchedules = schedules || [];
     await initAdminMatrix();
   }
 }
